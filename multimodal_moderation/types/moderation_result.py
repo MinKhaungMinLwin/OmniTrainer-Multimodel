@@ -3,7 +3,8 @@ from pydantic import BaseModel, Field
 
 
 class ModerationResult(BaseModel):
-    """Base model for moderation results with common fields."""
+    """Base model for all moderation results."""
+    
     rationale: str = Field(description="Explanation of what was harmful and why")
     contains_pii: bool = Field(
         default=False,
@@ -20,23 +21,47 @@ class ModerationResult(BaseModel):
 
 
 class TextModerationResult(ModerationResult):
-    """Text moderation result."""
-    # Inherits fields from ModerationResult.
+    """
+    Moderation result for text content.
+    Inherits all fields from ModerationResult.
+    """
     pass
 
 
 class ImageModerationResult(ModerationResult):
-    """Image moderation result."""
+    """Moderation result for image content."""
+
+    # Override contains_pii with image-specific description so the LLM knows what to look for
+    contains_pii: bool = Field(
+        default=False,
+        description="Whether the image contains any person, part of a person, or personally-identifiable information (PII)"
+    )
+    # Add image-specific fields
     is_disturbing: bool = Field(default=False, description="Whether the image is disturbing")
     is_low_quality: bool = Field(default=False, description="Whether the image is low quality")
 
 
 class VideoModerationResult(ModerationResult):
-    """Video moderation result."""
+    """Moderation result for video content."""
+
+    # Override contains_pii with video-specific description
+    contains_pii: bool = Field(
+        default=False,
+        description="Whether the video contains any person or personally-identifiable information (PII)"
+    )
+    # Add video-specific fields
     is_disturbing: bool = Field(default=False, description="Whether the video is disturbing")
     is_low_quality: bool = Field(default=False, description="Whether the video is low quality")
 
 
 class AudioModerationResult(ModerationResult):
-    """Audio moderation result."""
+    """Moderation result for audio content."""
+
+    # Add audio-specific field
     transcription: str = Field(description="The transcription of the audio")
+    
+    # Override contains_pii with audio-specific description
+    contains_pii: bool = Field(
+        default=False,
+        description="Whether the audio contains any personally-identifiable information (PII) such as names, addresses, phone numbers"
+    )
