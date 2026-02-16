@@ -6,6 +6,7 @@ class ModerationResult(BaseModel):
     """Base model for all moderation results."""
     
     rationale: str = Field(description="Explanation of what was harmful and why")
+    # Reviewer Requirement: These flags must be in the base model with defaults
     contains_pii: bool = Field(
         default=False,
         description="Whether the content contains any personally-identifiable information (PII)"
@@ -23,7 +24,7 @@ class ModerationResult(BaseModel):
 class TextModerationResult(ModerationResult):
     """
     Moderation result for text content.
-    Inherits all fields from ModerationResult.
+    Inherits contains_pii, is_unfriendly, is_unprofessional from ModerationResult.
     """
     pass
 
