@@ -17,22 +17,23 @@ RUNNING EVALS:
 
 import sys
 from pathlib import Path
-from typing import List, Any
+from typing import Any, List
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+import tenacity
 from pydantic import BaseModel, Field
+from pydantic_ai.retries import RetryConfig
 from pydantic_evals import Case, Dataset
 from pydantic_evals.evaluators import IsInstance, LLMJudge
-import tenacity
-from pydantic_ai.retries import RetryConfig
 
 from multimodal_moderation.agents.text_agent import moderate_text
+from multimodal_moderation.env import EVAL_NUM_REPEATS
 from multimodal_moderation.types.moderation_result import TextModerationResult
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from common_evaluators import HasRationale
-from config import get_model_under_test, get_judge_model
+from config import get_judge_model, get_model_under_test
 from utils import create_repeated_cases, get_test_data_path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -76,24 +77,29 @@ async def run_text_moderation(inputs: List[TextInput]) -> TextModerationResult:
 #   - TextModerationCheck: Checks boolean flags match expected values
 #   - LLMJudge: Uses an LLM to evaluate if the rationale is good
 cases: List[Case[List[TextInput], TextModerationResult, Any]] = [
+    # TODO: fill in the missing
     Case(
         name="professional_text",
         # Read the text from a file for repeatibility (we could have also inlined it here)
         inputs=[TextInput(text_file=get_test_data_path("professional_text.txt"))],
         metadata={"category": "text_moderation"},
-
+        # TODO: fill the parameters for the evaluators for this case. We need:
+        # 1. A TextModerationCheck that expects expected_pii=False, expected_unfriendly=False, expected_unprofessional=False
+        # 2. An LLMJudge that uses the judge_model and has a rubric that checks that the rationale explains why the text is
+        #    professional and friendly, with no flags raised. Example:
+        #    "The rationale should explain why the text is professional and friendly."
         evaluators=(
             # Check that no safety flags are raised for professional text
             TextModerationCheck(
-                expected_pii=False,
-                expected_unfriendly=False,
-                expected_unprofessional=False,
+                expected_pii=False,  # TODO
+                expected_unfriendly=False,  # TODO
+                expected_unprofessional=False,  # TODO
             ),
             # Use judge model to evaluate if the rationale makes sense
             LLMJudge(
-                model=judge_model,
-                rubric="The rationale should explain why the text is professional and friendly, with no flags raised.",
-                include_input=True,
+                model=judge_model,  # TODO: add the model to be used as judge (judge_model)
+                rubric="The rationale should explain why the text is professional and friendly.",  # TODO: add a rubric that checks the rationale explains why the text is professional and friendly.
+                include_input=True,  # TODO: in this case it is probably useful to include the input text for context, so set this to True
             ),
         ),
     ),
@@ -137,8 +143,13 @@ cases: List[Case[List[TextInput], TextModerationResult, Any]] = [
 # Create the dataset with all test cases
 # create_repeated_cases() repeats each case EVAL_NUM_REPEATS times to measure consistency
 text_dataset = Dataset[List[TextInput], TextModerationResult, Any](
-    # Use the create_repeated_cases function to create the dataset with the test cases defined above
-    cases=create_repeated_cases(cases),
+    # TODO: use the create_repeated_cases function to create the dataset with the test cases defined above
+    # repeated EVAL_NUM_REPEATS times (as defined in .env). This helps measure consistency of the model under test
+    # and reduces the variance of the measurements.
+    # HINT: you need to pass cases as the argument to create_repeated_cases
+    cases=create_repeated_cases(
+        cases, EVAL_NUM_REPEATS
+    ),  # TODO: use the create_repeated_cases function to create the dataset with the test cases defined above
     evaluators=[
         # Global evaluators that apply to all test cases
         IsInstance(type_name="TextModerationResult"),  # Check correct return type
@@ -163,6 +174,10 @@ async def main():
     )
 
     # Run all evaluations
+
+    # TODO: call await text_dataset.evaluate() with the appropriate parameters to enable retries
+    # HINT: you need to pass run_text_moderation as the function to test,
+    # and both retry_task and retry_evaluators should be set to retry_config
     report = await text_dataset.evaluate(
         run_text_moderation,
         retry_task=retry_config,

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-import subprocess
 import signal
+import subprocess
 import sys
+
 import phoenix as px
 
 
@@ -10,7 +11,7 @@ def main():
 
     if not session:
         raise RuntimeError("Failed to launch Phoenix session.")
-    
+
     print(f"🔍 Phoenix UI: {session.url}")
 
     def signal_handler(sig, frame):

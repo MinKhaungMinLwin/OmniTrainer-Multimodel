@@ -21,9 +21,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from multimodal_moderation.env import GEMINI_API_KEY, EVAL_JUDGE_MODEL, get_default_model_choice
+from pydantic_ai.models.google import GoogleModel, GoogleModelSettings, GoogleProvider
+
+from multimodal_moderation.env import EVAL_JUDGE_MODEL, GEMINI_API_KEY, get_default_model_choice
 from multimodal_moderation.types.model_choice import ModelChoice
-from pydantic_ai.models.google import GoogleModel, GoogleProvider, GoogleModelSettings
 
 
 def get_model_under_test() -> ModelChoice:

@@ -1,22 +1,21 @@
 import sys
 from pathlib import Path
-from typing import List, Any
+from typing import Any, List
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+import tenacity
 from pydantic import BaseModel, Field
+from pydantic_ai.retries import RetryConfig
 from pydantic_evals import Case, Dataset
 from pydantic_evals.evaluators import IsInstance, LLMJudge
-import tenacity
-from pydantic_ai.retries import RetryConfig
 
 from multimodal_moderation.agents.audio_agent import moderate_audio
-from multimodal_moderation.types.model_choice import ModelChoice
 from multimodal_moderation.types.moderation_result import AudioModerationResult
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from common_evaluators import HasRationale
-from config import get_model_under_test, get_judge_model
+from config import get_judge_model, get_model_under_test
 from utils import create_repeated_cases, get_test_data_path
 
 sys.path.insert(0, str(Path(__file__).parent))

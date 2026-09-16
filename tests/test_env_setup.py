@@ -9,17 +9,19 @@ Note: Integration tests make REAL API calls to verify connectivity.
 They are marked with pytest markers to allow selective running.
 """
 
-import os
-import pytest
 from pathlib import Path
+
+import pytest
 from pydantic_ai import Agent, models
 
 from multimodal_moderation.env import (
+    DEFAULT_GOOGLE_MODEL,
     GEMINI_API_KEY,
     USER_API_KEY,
-    DEFAULT_GOOGLE_MODEL,
     get_default_model_choice,
 )
+
+pytestmark = pytest.mark.integration
 
 
 # Environment configuration tests
@@ -29,36 +31,33 @@ def test_env_file_exists():
     """Verify that .env file exists in the project root"""
     # Look for .env file in the solution directory
     env_path = Path(__file__).parent.parent / ".env"
-    assert env_path.exists(), \
-        f".env file should exist at {env_path}. Create it from .env.example if needed."
+    assert env_path.exists(), f".env file should exist at {env_path}. Create it from .env.example if needed."
 
 
 def test_gemini_api_key_is_set():
     """Verify GEMINI_API_KEY environment variable is set"""
-    assert GEMINI_API_KEY, \
-        "GEMINI_API_KEY must be set in .env file. Get your API key from https://aistudio.google.com/apikey"
-    assert len(GEMINI_API_KEY) > 0, \
-        "GEMINI_API_KEY cannot be empty"
-    assert not GEMINI_API_KEY.startswith("your-"), \
-        "GEMINI_API_KEY appears to be a placeholder. Replace with actual API key from Google AI Studio"
+    assert (
+        GEMINI_API_KEY
+    ), "GEMINI_API_KEY must be set in .env file. Get your API key from https://aistudio.google.com/apikey"
+    assert len(GEMINI_API_KEY) > 0, "GEMINI_API_KEY cannot be empty"
+    assert not GEMINI_API_KEY.startswith(
+        "your-"
+    ), "GEMINI_API_KEY appears to be a placeholder. Replace with actual API key from Google AI Studio"
 
 
 def test_user_api_key_is_set():
     """Verify USER_API_KEY environment variable is set"""
-    assert USER_API_KEY, \
-        "USER_API_KEY must be set in .env file"
-    assert len(USER_API_KEY) > 0, \
-        "USER_API_KEY cannot be empty"
+    assert USER_API_KEY, "USER_API_KEY must be set in .env file"
+    assert len(USER_API_KEY) > 0, "USER_API_KEY cannot be empty"
 
 
 def test_default_google_model_is_set():
     """Verify DEFAULT_GOOGLE_MODEL environment variable is set"""
-    assert DEFAULT_GOOGLE_MODEL, \
-        "DEFAULT_GOOGLE_MODEL must be set in .env file"
-    assert len(DEFAULT_GOOGLE_MODEL) > 0, \
-        "DEFAULT_GOOGLE_MODEL cannot be empty"
-    assert DEFAULT_GOOGLE_MODEL.startswith("gemini-"), \
-        f"DEFAULT_GOOGLE_MODEL should be a Gemini model (e.g., 'gemini-2.5-flash'), got '{DEFAULT_GOOGLE_MODEL}'"
+    assert DEFAULT_GOOGLE_MODEL, "DEFAULT_GOOGLE_MODEL must be set in .env file"
+    assert len(DEFAULT_GOOGLE_MODEL) > 0, "DEFAULT_GOOGLE_MODEL cannot be empty"
+    assert DEFAULT_GOOGLE_MODEL.startswith(
+        "gemini-"
+    ), f"DEFAULT_GOOGLE_MODEL should be a Gemini model (e.g., 'gemini-2.5-flash'), got '{DEFAULT_GOOGLE_MODEL}'"
 
 
 # External model connectivity test
@@ -86,12 +85,9 @@ async def test_can_call_gemini_api():
         )
 
         # Verify we got a response
-        assert result is not None, \
-            "API call should return a result object"
-        assert result.output is not None, \
-            "Result should have output (indicates successful API call)"
-        assert len(str(result.output)) > 0, \
-            "Output should not be empty (indicates model generated content)"
+        assert result is not None, "API call should return a result object"
+        assert result.output is not None, "Result should have output (indicates successful API call)"
+        assert len(str(result.output)) > 0, "Output should not be empty (indicates model generated content)"
 
     except Exception as e:
         pytest.fail(

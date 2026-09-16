@@ -1,55 +1,43 @@
-"""
-Image Moderation Evaluation Suite
-
-This module defines test cases and runs evaluations for the image moderation agent.
-"""
-
 import sys
 from pathlib import Path
-from typing import List, Any
-import tenacity
-from pydantic import BaseModel, Field
-from pydantic_evals import Case, Dataset
-from pydantic_evals.evaluators import IsInstance, LLMJudge
-from pydantic_ai.retries import RetryConfig
+from typing import Any, List
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+import tenacity
+from pydantic import BaseModel, Field
+from pydantic_ai.retries import RetryConfig
+from pydantic_evals import Case, Dataset
+from pydantic_evals.evaluators import IsInstance, LLMJudge
+
 from multimodal_moderation.agents.image_agent import moderate_image
 from multimodal_moderation.types.moderation_result import ImageModerationResult
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from common_evaluators import HasRationale
-from config import get_model_under_test, get_judge_model
+from config import get_judge_model, get_model_under_test
 from utils import create_repeated_cases, get_test_data_path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from evaluators import ImageModerationCheck
 
+# Get the models for evaluation
 judge_model, judge_settings = get_judge_model()
 
 
 class ImageInput(BaseModel):
     """Input schema for image moderation test cases."""
+
     image_file: str = Field(description="Path to image file to moderate")
 
 
 async def run_image_moderation(inputs: List[ImageInput]) -> ImageModerationResult:
-    """
-    Run the image moderation agent on a test input.
-    """
+    """Run the image moderation agent on a test input."""
     assert len(inputs) == 1, "Image moderation expects exactly one input"
-    image_path = inputs[0].image_file
-    
-    with open(image_path, "rb") as f:
-        image_bytes = f.read()
-
-    # Determine media type (assuming jpg for test data based on common patterns, 
-    # but extension check is safer)
-    ext = Path(image_path).suffix.lower()
-    media_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
-    
+    image_bytes = Path(inputs[0].image_file).read_bytes()
+    # Use the model under test (not the judge model!)
     model_choice = get_model_under_test()
-    return await moderate_image(model_choice, image_bytes, media_type)
+    return await moderate_image(model_choice, image_bytes, media_type="image/jpeg")
 
 
 cases: List[Case[List[ImageInput], ImageModerationResult, Any]] = [
@@ -65,14 +53,13 @@ cases: List[Case[List[ImageInput], ImageModerationResult, Any]] = [
             ),
             LLMJudge(
                 model=judge_model,
-                rubric="The rationale should explain why the image is professional and safe.",
-                include_input=False,
+                rubric="The rationale should confirm the image is professional with no PII, disturbing content, or quality issues",
+                include_input=True,
             ),
         ),
     ),
     Case(
-        name="image_with_pii",
-        # Updated to use the existing file 'image_with_person.jpg'
+        name="image_with_person",
         inputs=[ImageInput(image_file=get_test_data_path("image_with_person.jpg"))],
         metadata={"category": "image_moderation"},
         evaluators=(
@@ -83,26 +70,29 @@ cases: List[Case[List[ImageInput], ImageModerationResult, Any]] = [
             ),
             LLMJudge(
                 model=judge_model,
-                rubric="The rationale should identify that the image contains a person or PII.",
-                include_input=False,
+                rubric="The rationale should specifically identify the presence of a person or personally identifiable visual information",
+                include_input=True,
             ),
         ),
     ),
     Case(
         name="low_quality_image",
-        # Updated to use the existing file 'low_quality_image.jpg' instead of 'disturbing_image.jpg'
         inputs=[ImageInput(image_file=get_test_data_path("low_quality_image.jpg"))],
         metadata={"category": "image_moderation"},
+        # TODO: define the evaluators for this case. We need:
+        # 1. An ImageModerationCheck that expects expected_pii=True, expected_disturbing=False, expected_low_quality=True
+        # 2. An LLMJudge that uses the judge_model and has a rubric that checks that the rationale describes specific quality
+        #    issues (blurry, pixelated, poor exposure, etc.)
         evaluators=(
             ImageModerationCheck(
-                expected_pii=False,
+                expected_pii=True,
                 expected_disturbing=False,
                 expected_low_quality=True,
             ),
             LLMJudge(
                 model=judge_model,
-                rubric="The rationale should explain why the image is considered low quality.",
-                include_input=False,
+                rubric="The rationale should describe specific quality issues (blurry, pixelated, poor exposure, etc.)",
+                include_input=True,  # TODO: in this case it is probably useful to include the input image for contextue
             ),
         ),
     ),
@@ -135,4 +125,5 @@ async def main():
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())

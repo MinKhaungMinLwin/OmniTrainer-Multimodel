@@ -1,0 +1,4 @@
+**/dist/
+**/.expo/
+packages/contracts/src/schema.d.ts
+packages/contracts/openapi.json

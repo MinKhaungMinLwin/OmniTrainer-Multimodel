@@ -1,11 +1,13 @@
-import uuid
 import shutil
+import uuid
 from pathlib import Path
+
+from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
+
 from multimodal_moderation.env import PHOENIX_URL
 
 
@@ -52,11 +54,13 @@ def add_media_to_span(span: trace.Span, file_path: str, media_type: str, index: 
 
         # Add file metadata to span for Phoenix visualization
         absolute_path = dest_path.resolve()
-        span.set_attributes({
-            f"input.{media_type}.{index}.url": f"file://{absolute_path}",
-            f"input.{media_type}.{index}.filename": source_path.name,
-            f"input.{media_type}.{index}.size_bytes": source_path.stat().st_size,
-        })
+        span.set_attributes(
+            {
+                f"input.{media_type}.{index}.url": f"file://{absolute_path}",
+                f"input.{media_type}.{index}.filename": source_path.name,
+                f"input.{media_type}.{index}.size_bytes": source_path.stat().st_size,
+            }
+        )
     except Exception:
         # Silently fail - tracing should not break the app
         pass

@@ -1,11 +1,10 @@
 import os
-from pathlib import Path
+
 from dotenv import load_dotenv
 from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from pydantic_ai.providers.google import GoogleProvider
 
 from multimodal_moderation.types.model_choice import ModelChoice
-
 
 load_dotenv()
 
@@ -29,9 +28,6 @@ PHOENIX_URL: str = os.getenv("PHOENIX_URL", "http://127.0.0.1:6006")
 
 def get_default_model_choice() -> ModelChoice:
     return ModelChoice(
-        model=GoogleModel(
-            DEFAULT_GOOGLE_MODEL,
-            provider=GoogleProvider(api_key=GEMINI_API_KEY)
-        ),
+        model=GoogleModel(DEFAULT_GOOGLE_MODEL, provider=GoogleProvider(api_key=GEMINI_API_KEY)),
         model_settings=GoogleModelSettings(google_thinking_config={"thinking_budget": 0}),
     )

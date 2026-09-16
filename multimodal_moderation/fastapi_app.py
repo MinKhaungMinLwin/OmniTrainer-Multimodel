@@ -1,20 +1,19 @@
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
-from multimodal_moderation.env import get_default_model_choice, USER_API_KEY
-from multimodal_moderation.utils import detect_file_type
-from multimodal_moderation.types.moderation_result import (
-    TextModerationResult,
-    ImageModerationResult,
-    VideoModerationResult,
-    AudioModerationResult,
-)
-from multimodal_moderation.agents.text_agent import moderate_text
-from multimodal_moderation.agents.image_agent import moderate_image
-from multimodal_moderation.agents.video_agent import moderate_video
 from multimodal_moderation.agents.audio_agent import moderate_audio
-
+from multimodal_moderation.agents.image_agent import moderate_image
+from multimodal_moderation.agents.text_agent import moderate_text
+from multimodal_moderation.agents.video_agent import moderate_video
+from multimodal_moderation.env import USER_API_KEY, get_default_model_choice
+from multimodal_moderation.types.moderation_result import (
+    AudioModerationResult,
+    ImageModerationResult,
+    TextModerationResult,
+    VideoModerationResult,
+)
+from multimodal_moderation.utils import detect_file_type
 
 # Standard auth scheme using -H "Authorization: Bearer <api_key>" header.
 security = HTTPBearer()

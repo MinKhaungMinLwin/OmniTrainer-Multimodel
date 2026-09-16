@@ -1,8 +1,8 @@
 from pydantic_ai import Agent
 from pydantic_ai.models.google import GoogleModel, GoogleModelSettings
 from pydantic_ai.providers.google import GoogleProvider
-from multimodal_moderation.env import GEMINI_API_KEY, DEFAULT_GOOGLE_MODEL
 
+from multimodal_moderation.env import DEFAULT_GOOGLE_MODEL, GEMINI_API_KEY
 
 ACME_SYSTEM_PROMPT = """
 ROLE

@@ -13,7 +13,9 @@ TYPES OF EVALUATORS:
 """
 
 from dataclasses import dataclass
+
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
+
 from multimodal_moderation.types.moderation_result import ModerationResult
 
 

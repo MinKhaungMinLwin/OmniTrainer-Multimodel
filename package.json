@@ -1,0 +1,40 @@
+{
+  "name": "omni-model",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,worker,web -c cyan,yellow,magenta \"uv run omni-api\" \"uv run omni-worker\" \"npm run dev:web\"",
+    "dev:web": "npm run dev --workspace @omni/web",
+    "dev:mobile": "npm run dev --workspace @omni/mobile",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "prettier --write \"{apps,packages}/**/*.{ts,tsx,js,json,css}\"",
+    "format:check": "prettier --check \"{apps,packages}/**/*.{ts,tsx,js,json,css}\"",
+    "generate:contracts": "openapi-typescript packages/contracts/openapi.json -o packages/contracts/src/schema.d.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.38.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^16.4.0",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3"
+  }
+}

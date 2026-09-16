@@ -1,0 +1,1712 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Omni Model API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Liveness",
+        "operationId": "liveness_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Readiness",
+        "operationId": "readiness_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dev/token": {
+      "post": {
+        "tags": [
+          "development"
+        ],
+        "summary": "Development Token",
+        "operationId": "development_token_api_v1_dev_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_v1_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tenants": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Tenants",
+        "operationId": "tenants_api_v1_tenants_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TenantRead"
+                  },
+                  "type": "array",
+                  "title": "Response Tenants Api V1 Tenants Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/customers": {
+      "get": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "List Customers",
+        "operationId": "list_customers_api_v1_customers_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "customers"
+        ],
+        "summary": "Create Customer",
+        "operationId": "create_customer_api_v1_customers_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "List Jobs",
+        "operationId": "list_jobs_api_v1_jobs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Create Job",
+        "operationId": "create_job_api_v1_jobs_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}/schedule": {
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Schedule Job",
+        "operationId": "schedule_job_api_v1_jobs__job_id__schedule_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleJob"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppointmentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}/complete": {
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Complete Job",
+        "operationId": "complete_job_api_v1_jobs__job_id__complete_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteJob"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/appointments": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "List Appointments",
+        "operationId": "list_appointments_api_v1_appointments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AppointmentRead"
+                  },
+                  "title": "Response List Appointments Api V1 Appointments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invoices": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "List Invoices",
+        "operationId": "list_invoices_api_v1_invoices_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{job_id}/invoice": {
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Draft Invoice",
+        "operationId": "draft_invoice_api_v1_jobs__job_id__invoice_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftInvoice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{invoice_id}/issue": {
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Issue Invoice",
+        "operationId": "issue_invoice_api_v1_invoices__invoice_id__issue_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Invoice Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{invoice_id}/void": {
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Void Invoice",
+        "operationId": "void_invoice_api_v1_invoices__invoice_id__void_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invoice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Invoice Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "X-Tenant-ID",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Tenant-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AppointmentRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "job_id",
+          "starts_at",
+          "ends_at",
+          "timezone",
+          "assignee",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AppointmentRead"
+      },
+      "CompleteJob": {
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expected_version"
+        ],
+        "title": "CompleteJob"
+      },
+      "CustomerCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CustomerCreate"
+      },
+      "CustomerList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "CustomerList"
+      },
+      "CustomerRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "id",
+          "tenant_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CustomerRead"
+      },
+      "DevTokenRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "default": "owner@omni.example"
+          }
+        },
+        "type": "object",
+        "title": "DevTokenRequest"
+      },
+      "DraftInvoice": {
+        "properties": {
+          "expected_job_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Job Version"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "default": "USD"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLineCreate"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expected_job_version",
+          "lines"
+        ],
+        "title": "DraftInvoice"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InvoiceCommand": {
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expected_version"
+        ],
+        "title": "InvoiceCommand"
+      },
+      "InvoiceLineCreate": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Description"
+          },
+          "quantity": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Quantity"
+          },
+          "unit_price_cents": {
+            "type": "integer",
+            "maximum": 100000000.0,
+            "minimum": 0.0,
+            "title": "Unit Price Cents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "description",
+          "quantity",
+          "unit_price_cents"
+        ],
+        "title": "InvoiceLineCreate"
+      },
+      "InvoiceLineRead": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Description"
+          },
+          "quantity": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Quantity"
+          },
+          "unit_price_cents": {
+            "type": "integer",
+            "maximum": 100000000.0,
+            "minimum": 0.0,
+            "title": "Unit Price Cents"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "amount_cents": {
+            "type": "integer",
+            "title": "Amount Cents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "description",
+          "quantity",
+          "unit_price_cents",
+          "id",
+          "amount_cents"
+        ],
+        "title": "InvoiceLineRead"
+      },
+      "InvoiceList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "InvoiceList"
+      },
+      "InvoiceRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "customer_id": {
+            "type": "string",
+            "title": "Customer Id"
+          },
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "number": {
+            "type": "string",
+            "title": "Number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "issued",
+              "void"
+            ],
+            "title": "Status"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "subtotal_cents": {
+            "type": "integer",
+            "title": "Subtotal Cents"
+          },
+          "total_cents": {
+            "type": "integer",
+            "title": "Total Cents"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "issued_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issued At"
+          },
+          "voided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided At"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLineRead"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "customer_id",
+          "job_id",
+          "number",
+          "status",
+          "currency",
+          "subtotal_cents",
+          "total_cents",
+          "version",
+          "issued_at",
+          "voided_at",
+          "lines",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InvoiceRead"
+      },
+      "JobCreate": {
+        "properties": {
+          "customer_id": {
+            "type": "string",
+            "title": "Customer Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "customer_id",
+          "title"
+        ],
+        "title": "JobCreate"
+      },
+      "JobList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "JobList"
+      },
+      "JobRead": {
+        "properties": {
+          "customer_id": {
+            "type": "string",
+            "title": "Customer Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "scheduled",
+              "completed",
+              "invoiced"
+            ],
+            "title": "Status"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "customer_id",
+          "title",
+          "id",
+          "tenant_id",
+          "status",
+          "version",
+          "completed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "JobRead"
+      },
+      "ScheduleJob": {
+        "properties": {
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ends At"
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Timezone",
+            "default": "UTC"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "starts_at",
+          "ends_at",
+          "expected_version"
+        ],
+        "title": "ScheduleJob"
+      },
+      "TenantRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "role"
+        ],
+        "title": "TenantRead"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "title": "TokenResponse"
+      },
+      "UserRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "display_name"
+        ],
+        "title": "UserRead"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

@@ -15,6 +15,7 @@ than truly reliable.
 import sys
 from pathlib import Path
 from typing import List, TypeVar
+
 from pydantic_evals import Case
 
 sys.path.insert(0, str(Path(__file__).parent.parent))

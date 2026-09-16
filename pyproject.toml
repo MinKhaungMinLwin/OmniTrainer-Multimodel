@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multimodal_moderation"
+version = "0.1.0"
+description = "Omni Model business automation and multimodal AI platform"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [
+    {name = "Giacomo Vianello"}
+]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.0.0",
+    "pydantic-ai>=0.1.0",
+    "google-genai>=0.3.0",
+    "python-dotenv>=1.0.0",
+    "gradio>=4.0.0",
+    "requests>=2.31.0",
+    "filetype>=1.2.0",
+    "arize-phoenix>=12.2.0",
+    "openinference-instrumentation-pydantic-ai>=0.1.7",
+    "ipykernel>=7.3.0",
+    "python-certifi-win32>=1.6.1",
+    "sqlalchemy[asyncio]>=2.0.44",
+    "alembic>=1.17.0",
+    "asyncpg>=0.30.0",
+    "aiosqlite>=0.21.0",
+    "pydantic-settings>=2.11.0",
+    "pyjwt>=2.10.1",
+    "redis>=6.4.0",
+    "email-validator>=2.3.0",
+    "boto3>=1.40.0",
+    "python-multipart>=0.0.20",
+    "reportlab>=4.4.0",
+]
+
+[project.scripts]
+multimodal-moderation-api = "multimodal_moderation.fastapi_app:main"
+multimodal-moderation-chat = "multimodal_moderation.gradio_app:main"
+multimodal-moderation = "multimodal_moderation.app:main"
+omni-api = "services.api.omni_api.main:main"
+omni-worker = "services.worker.omni_worker.main:main"
+omni-seed = "services.api.omni_api.seed:main"
+omni-openapi = "services.api.omni_api.openapi:main"
+
+[tool.black]
+line-length = 120
+target-version = ['py312']
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[tool.setuptools.packages.find]
+include = ["multimodal_moderation*", "services*"]
+exclude = ["evals*", "tests*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-m 'not integration'"
+markers = [
+    "integration: makes live requests to an external service and is opt-in",
+]
+
+[tool.flake8]
+max-line-length = 120
+extend-ignore = ["E203", "W503"]
+exclude = [".git", ".venv", "__pycache__"]
+
+[dependency-groups]
+platform = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.11.0",
+    "sqlalchemy[asyncio]>=2.0.44",
+    "alembic>=1.17.0",
+    "asyncpg>=0.30.0",
+    "aiosqlite>=0.21.0",
+    "pyjwt>=2.10.1",
+    "redis>=6.4.0",
+    "email-validator>=2.3.0",
+    "boto3>=1.40.0",
+    "python-multipart>=0.0.20",
+    "reportlab>=4.4.0",
+]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "uv>=0.7.8",
+    "pydantic-evals>=1.1.0",
+    "tenacity>=8.0.0",
+    "httpx>=0.28.1",
+]

@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --locked --dev
+      - name: Check formatting
+        run: uv run black --check multimodal_moderation services tests evals
+      - name: Check import ordering
+        run: uv run isort --check-only multimodal_moderation services tests evals
+      - name: Lint
+        run: uv run flake8 multimodal_moderation services tests evals
+      - name: Run deterministic tests
+        env:
+          GEMINI_API_KEY: unit-test-gemini-key
+          USER_API_KEY: unit-test-user-key
+          DEFAULT_GOOGLE_MODEL: gemini-2.5-flash-lite
+        run: uv run pytest
+      - name: Verify migrations
+        env:
+          OMNI_DATABASE_URL: sqlite+aiosqlite:////tmp/omni-migrations.db
+          OMNI_JWT_SECRET: migration-check-secret-with-at-least-32-characters
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+      - name: Scan repository for secrets
+        uses: gitleaks/gitleaks-action@v2
+
+  clients:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: uv sync --locked --dev
+      - run: npm ci
+      - name: Verify generated API contracts
+        run: |
+          uv run omni-openapi
+          npm run generate:contracts
+          git diff --exit-code -- packages/contracts
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Audit high-severity production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start the platform stack
+        run: docker compose --profile platform up -d --build --wait
+      - name: Smoke-test the containerized API
+        run: curl --fail --silent --show-error http://localhost:8001/health/ready
+      - name: Show service state
+        if: always()
+        run: docker compose --profile platform ps
+      - name: Show service logs
+        if: failure()
+        run: docker compose --profile platform logs --no-color
+      - name: Stop the platform stack
+        if: always()
+        run: docker compose --profile platform down --volumes

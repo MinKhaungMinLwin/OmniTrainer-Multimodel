@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Omni Model",
+    "slug": "omni-model",
+    "scheme": "omnimodel",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": { "typedRoutes": true },
+    "web": { "bundler": "metro", "output": "static" },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.omnimodel.mobile"
+    },
+    "android": { "package": "com.omnimodel.mobile" }
+  }
+}

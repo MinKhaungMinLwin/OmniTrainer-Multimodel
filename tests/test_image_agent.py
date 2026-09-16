@@ -9,14 +9,14 @@ Uses pydantic AI's TestModel to avoid real API calls while still validating
 that the Agent is configured correctly with proper instructions and schema.
 """
 
-import pytest
 from pathlib import Path
+
 from pydantic_ai import models
 from pydantic_ai.models.test import TestModel
 
-from multimodal_moderation.agents.image_agent import moderate_image, image_moderation_agent
-from multimodal_moderation.types.moderation_result import ImageModerationResult
+from multimodal_moderation.agents.image_agent import image_moderation_agent, moderate_image
 from multimodal_moderation.env import get_default_model_choice
+from multimodal_moderation.types.moderation_result import ImageModerationResult
 
 # Block accidental real API calls - all tests should use TestModel
 models.ALLOW_MODEL_REQUESTS = False
@@ -47,8 +47,9 @@ async def test_moderate_image_returns_image_moderation_result():
     with image_moderation_agent.override(model=TestModel()):
         result = await moderate_image(model, image_bytes, media_type="image/jpeg")
 
-    assert isinstance(result, ImageModerationResult), \
-        f"moderate_image should return ImageModerationResult, got {type(result)}"
+    assert isinstance(
+        result, ImageModerationResult
+    ), f"moderate_image should return ImageModerationResult, got {type(result)}"
 
 
 async def test_moderate_image_has_required_fields():
@@ -59,10 +60,10 @@ async def test_moderate_image_has_required_fields():
     with image_moderation_agent.override(model=TestModel()):
         result = await moderate_image(model, image_bytes, media_type="image/jpeg")
 
-    assert hasattr(result, 'contains_pii'), "Result must have 'contains_pii' field"
-    assert hasattr(result, 'is_disturbing'), "Result must have 'is_disturbing' field"
-    assert hasattr(result, 'is_low_quality'), "Result must have 'is_low_quality' field"
-    assert hasattr(result, 'rationale'), "Result must have 'rationale' field"
+    assert hasattr(result, "contains_pii"), "Result must have 'contains_pii' field"
+    assert hasattr(result, "is_disturbing"), "Result must have 'is_disturbing' field"
+    assert hasattr(result, "is_low_quality"), "Result must have 'is_low_quality' field"
+    assert hasattr(result, "rationale"), "Result must have 'rationale' field"
 
     assert isinstance(result.contains_pii, bool), "contains_pii should be a boolean"
     assert isinstance(result.is_disturbing, bool), "is_disturbing should be a boolean"

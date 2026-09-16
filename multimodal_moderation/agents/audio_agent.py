@@ -1,8 +1,8 @@
 from pydantic_ai import Agent
 from pydantic_ai.messages import BinaryContent
+
 from multimodal_moderation.types.model_choice import ModelChoice
 from multimodal_moderation.types.moderation_result import AudioModerationResult
-
 
 MODERATION_INSTRUCTIONS = """
 CONTEXT
@@ -34,11 +34,7 @@ audio_moderation_agent = Agent(
 )
 
 
-async def moderate_audio(
-    model_choice: ModelChoice,
-    audio_source: bytes,
-    media_type: str
-) -> AudioModerationResult:
+async def moderate_audio(model_choice: ModelChoice, audio_source: bytes, media_type: str) -> AudioModerationResult:
 
     audio_input = BinaryContent(data=audio_source, media_type=media_type)
 

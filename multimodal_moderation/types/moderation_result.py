@@ -1,68 +1,64 @@
-from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class ModerationResult(BaseModel):
-    """Base model for all moderation results."""
-    
+
     rationale: str = Field(description="Explanation of what was harmful and why")
-    # Reviewer Requirement: These flags must be in the base model with defaults
-    contains_pii: bool = Field(
-        default=False,
-        description="Whether the content contains any personally-identifiable information (PII)"
-    )
-    is_unfriendly: bool = Field(
-        default=False,
-        description="Whether unfriendly tone or content was detected"
-    )
-    is_unprofessional: bool = Field(
-        default=False,
-        description="Whether unprofessional tone or content was detected"
-    )
 
 
 class TextModerationResult(ModerationResult):
-    """
-    Moderation result for text content.
-    Inherits contains_pii, is_unfriendly, is_unprofessional from ModerationResult.
-    """
-    pass
+
+    contains_pii: bool = Field(description="Whether the message contains any personally-identifiable information (PII)")
+    is_unfriendly: bool = Field(description="Whether unfriendly tone or content was detected")
+    is_unprofessional: bool = Field(description="Whether unprofessional tone or content was detected")
+
+    @computed_field
+    @property
+    def is_flagged(self) -> bool:
+        """whether the message is flagged for review based on the moderation results"""
+        return self.contains_pii or self.is_unfriendly or self.is_unprofessional
 
 
 class ImageModerationResult(ModerationResult):
-    """Moderation result for image content."""
 
-    # Override contains_pii with image-specific description so the LLM knows what to look for
     contains_pii: bool = Field(
-        default=False,
         description="Whether the image contains any person, part of a person, or personally-identifiable information (PII)"
     )
-    # Add image-specific fields
-    is_disturbing: bool = Field(default=False, description="Whether the image is disturbing")
-    is_low_quality: bool = Field(default=False, description="Whether the image is low quality")
+    is_disturbing: bool = Field(description="Whether the image is disturbing")
+    is_low_quality: bool = Field(description="Whether the image is low quality")
+
+    @computed_field
+    @property
+    def is_flagged(self) -> bool:
+        """whether the image is flagged for review based on the moderation results"""
+        return self.contains_pii or self.is_disturbing or self.is_low_quality
 
 
 class VideoModerationResult(ModerationResult):
-    """Moderation result for video content."""
 
-    # Override contains_pii with video-specific description
     contains_pii: bool = Field(
-        default=False,
         description="Whether the video contains any person or personally-identifiable information (PII)"
     )
-    # Add video-specific fields
-    is_disturbing: bool = Field(default=False, description="Whether the video is disturbing")
-    is_low_quality: bool = Field(default=False, description="Whether the video is low quality")
+    is_disturbing: bool = Field(description="Whether the video is disturbing")
+    is_low_quality: bool = Field(description="Whether the video is low quality")
+
+    @computed_field
+    @property
+    def is_flagged(self) -> bool:
+        """whether the video is flagged for review based on the moderation results"""
+        return self.contains_pii or self.is_disturbing or self.is_low_quality
 
 
 class AudioModerationResult(ModerationResult):
-    """Moderation result for audio content."""
-
-    # Add audio-specific field
-    transcription: str = Field(description="The transcription of the audio")
-    
-    # Override contains_pii with audio-specific description
+    transcription: str = Field(description="Transcription of the audio")
     contains_pii: bool = Field(
-        default=False,
         description="Whether the audio contains any personally-identifiable information (PII) such as names, addresses, phone numbers"
     )
+    is_unfriendly: bool = Field(description="Whether unfriendly tone or content was detected")
+    is_unprofessional: bool = Field(description="Whether unprofessional tone or content was detected")
+
+    @computed_field
+    @property
+    def is_flagged(self) -> bool:
+        """whether the audio is flagged for review based on the moderation results"""
+        return self.contains_pii or self.is_unfriendly or self.is_unprofessional
