@@ -1,0 +1,23 @@
+groups:
+  - name: omni-voice
+    rules:
+      - alert: VoiceGatewayLoadShedding
+        expr: increase(omni_voice_sessions_load_shed_total[5m]) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Voice gateway is rejecting new sessions"}
+      - alert: VoiceProviderFallbackSpike
+        expr: increase(omni_voice_stt_fallbacks_total[10m]) > 5
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "STT fallback activation rate is elevated"}
+      - alert: VoiceMediaBackpressure
+        expr: increase(omni_voice_media_frames_overflow_total[5m]) > 10
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "Voice media buffer is dropping frames"}
+      - alert: VoiceStageLatency
+        expr: omni_voice_stt_latency_ms_p95 > 800
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Voice stage latency exceeds the SLO"}

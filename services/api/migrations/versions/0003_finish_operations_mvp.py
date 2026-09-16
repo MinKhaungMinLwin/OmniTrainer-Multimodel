@@ -52,11 +52,11 @@ def upgrade() -> None:
     )
     op.create_index("ix_customer_locations_tenant_id", "customer_locations", ["tenant_id"])
     op.create_index("ix_customer_locations_customer_id", "customer_locations", ["customer_id"])
-    op.add_column(
-        "jobs",
-        sa.Column("location_id", sa.String(36), sa.ForeignKey("customer_locations.id", ondelete="SET NULL")),
-    )
-    op.create_index("ix_jobs_location_id", "jobs", ["location_id"])
+    with op.batch_alter_table("jobs") as batch:
+        batch.add_column(
+            sa.Column("location_id", sa.String(36), sa.ForeignKey("customer_locations.id", ondelete="SET NULL"))
+        )
+        batch.create_index("ix_jobs_location_id", ["location_id"])
     op.create_table(
         "technicians",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -70,12 +70,12 @@ def upgrade() -> None:
         sa.UniqueConstraint("tenant_id", "email", name="uq_technicians_tenant_id"),
     )
     op.create_index("ix_technicians_tenant_id", "technicians", ["tenant_id"])
-    op.add_column(
-        "appointments",
-        sa.Column("technician_id", sa.String(36), sa.ForeignKey("technicians.id", ondelete="SET NULL")),
-    )
-    op.add_column("appointments", sa.Column("version", sa.Integer(), nullable=False, server_default="1"))
-    op.create_index("ix_appointments_technician_id", "appointments", ["technician_id"])
+    with op.batch_alter_table("appointments") as batch:
+        batch.add_column(
+            sa.Column("technician_id", sa.String(36), sa.ForeignKey("technicians.id", ondelete="SET NULL"))
+        )
+        batch.add_column(sa.Column("version", sa.Integer(), nullable=False, server_default="1"))
+        batch.create_index("ix_appointments_technician_id", ["technician_id"])
     op.create_table(
         "availability_windows",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -147,12 +147,14 @@ def downgrade() -> None:
     op.drop_table("job_notes")
     op.drop_table("job_status_history")
     op.drop_table("availability_windows")
-    op.drop_index("ix_appointments_technician_id", table_name="appointments")
-    op.drop_column("appointments", "version")
-    op.drop_column("appointments", "technician_id")
+    with op.batch_alter_table("appointments") as batch:
+        batch.drop_index("ix_appointments_technician_id")
+        batch.drop_column("version")
+        batch.drop_column("technician_id")
     op.drop_table("technicians")
-    op.drop_index("ix_jobs_location_id", table_name="jobs")
-    op.drop_column("jobs", "location_id")
+    with op.batch_alter_table("jobs") as batch:
+        batch.drop_index("ix_jobs_location_id")
+        batch.drop_column("location_id")
     op.drop_table("customer_locations")
     op.drop_table("customer_contacts")
     op.drop_column("invoices", "payment_status")

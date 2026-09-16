@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
@@ -12,7 +12,6 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.api.omni_api.auth import TenantContext, get_tenant_context, require_roles
-from services.api.omni_api.config import Settings
 from services.api.omni_api.database import get_session
 from services.api.omni_api.models import (
     Appointment,
@@ -31,7 +30,9 @@ from services.api.omni_api.models import (
     Technician,
 )
 from services.api.omni_api.operations import (
+    add_receipt,
     conflict,
+    prior_resource,
     record_change,
     resolve_technician,
     tenant_invoice,
@@ -555,9 +556,18 @@ async def record_payment(
     invoice_id: str,
     payload: PaymentCreate,
     request: Request,
+    idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=200),
     context: TenantContext = Depends(require_roles("owner", "accountant")),
     session: AsyncSession = Depends(get_session),
 ) -> Payment:
+    prior = await prior_resource(session, context.tenant_id, idempotency_key, "invoice.payment")
+    if prior:
+        payment = await session.scalar(
+            select(Payment).where(Payment.id == prior.resource_id, Payment.tenant_id == context.tenant_id)
+        )
+        if payment is None:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        return payment
     invoice = await tenant_invoice(session, context.tenant_id, invoice_id)
     if invoice.status != "issued":
         raise conflict("Payments can only be recorded against issued invoices")
@@ -565,6 +575,15 @@ async def record_payment(
         raise conflict("Payment exceeds the outstanding balance")
     if payload.received_at is not None and payload.received_at.tzinfo is None:
         raise HTTPException(status_code=422, detail="Payment timestamp must include a UTC offset")
+    if payload.external_ref is not None:
+        duplicate = await session.scalar(
+            select(Payment.id).where(
+                Payment.tenant_id == context.tenant_id,
+                Payment.external_ref == payload.external_ref,
+            )
+        )
+        if duplicate is not None:
+            raise conflict("Payment external reference already exists")
     payment = Payment(
         tenant_id=context.tenant_id,
         invoice_id=invoice.id,
@@ -578,6 +597,7 @@ async def record_payment(
     invoice.payment_status = "paid" if invoice.paid_cents == invoice.total_cents else "partial"
     invoice.version += 1
     await session.flush()
+    add_receipt(session, context, idempotency_key, "invoice.payment", "payment", payment.id)
     record_change(
         session,
         context=context,

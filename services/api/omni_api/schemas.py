@@ -93,6 +93,8 @@ class LocationRead(LocationCreate):
 
 
 class ActivityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     action: str
     resource_type: str

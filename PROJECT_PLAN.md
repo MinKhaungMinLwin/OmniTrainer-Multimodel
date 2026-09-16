@@ -269,6 +269,30 @@ Assuming a cross-functional team can work on product, platform, AI, data, and vo
 | M5: Intelligence | Weeks 26–36 | Reconciled call pipeline, dashboards, conversation intelligence |
 | M6: Scale Readiness | Weeks 32–40 | Reliability tests, mature eval gates, canary CD, recovery exercises |
 
+Implementation status: **M1 Operations MVP completed on 2026-09-16.** The next
+delivery milestone, **M2 AI Copilot, was completed on 2026-09-16** with durable
+streaming runs, cited knowledge retrieval, tenant-scoped tools, reviewed write
+proposals, feedback, and extraction correction. **M3 Automations was completed
+on 2026-09-16** with seven versioned templates, transactional event and schedule
+dispatch, shadow/production rollout, approvals, retry/dead-letter controls,
+replay, compensation, kill switches, and explainable run history. The next
+milestone, **M4 Voice Pilot, was completed on 2026-09-16** with a constrained
+after-hours intake flow, signed telephony/media admission, streaming turn
+handling, barge-in, consent and emergency transfer policy, aligned recordings
+and transcripts, and reviewed callback creation on web and mobile. External
+carrier certification remains a deployment activity requiring provider
+credentials. **M5 Intelligence was completed on 2026-09-16** with immutable raw
+provider evidence, replayable transcript cleaning and PII redaction, corrected
+transcript versions, structured conversation intelligence, human quality
+review, reconciled call facts, governed metrics, search, and web/mobile
+dashboards. **M6 Scale Readiness was completed on 2026-09-16** with bounded
+voice-media admission and backpressure, provider deadlines/circuit breakers and
+fallback, reliability metrics and alerts, versioned quality/safety/cost/latency
+release gates, cloud infrastructure as code, resource-aware runtime manifests,
+canary delivery with rollback, and checksummed recovery exercises. Cloud,
+carrier, DNS, certificate, and production identity values remain deployment
+inputs rather than repository secrets.
+
 These are planning ranges, not commitments. Re-estimate after Steps 0–2 based on team size, provider choices, compliance scope, and whether payments/accounting integrations are included.
 
 ## 7. Workstreams and Ownership
@@ -325,4 +349,3 @@ AI features additionally require a versioned eval dataset, offline comparison, o
 8. Implement authentication, tenant context, migrations, audit log, outbox, and one customer API/UI slice.
 9. Build the first deterministic test fixture and baseline the existing moderation evals.
 10. Run vendor spikes for telephony, STT/TTS/realtime model, workflow engine, and warehouse; record decisions against latency, reliability, compliance, portability, and cost criteria.
-

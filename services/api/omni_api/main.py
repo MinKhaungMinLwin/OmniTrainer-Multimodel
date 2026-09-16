@@ -8,15 +8,19 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from services.api.omni_api.ai_copilot import router as ai_copilot_router
 from services.api.omni_api.auth import create_access_token, get_current_user
+from services.api.omni_api.automations import router as automations_router
 from services.api.omni_api.config import Settings, get_settings
 from services.api.omni_api.customers import router as customers_router
 from services.api.omni_api.database import Base, build_engine, build_session_factory, get_session
+from services.api.omni_api.intelligence import router as intelligence_router
 from services.api.omni_api.models import TenantMembership, User
 from services.api.omni_api.operations import router as operations_router
 from services.api.omni_api.operations_mvp import router as operations_mvp_router
 from services.api.omni_api.schemas import DevTokenRequest, TenantRead, TokenResponse, UserRead
 from services.api.omni_api.seed import seed_development_data
+from services.api.omni_api.voice import router as voice_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -100,6 +104,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(customers_router)
     api.include_router(operations_router)
     api.include_router(operations_mvp_router)
+    api.include_router(ai_copilot_router)
+    api.include_router(automations_router)
+    api.include_router(voice_router)
+    api.include_router(intelligence_router)
     app.include_router(api)
     return app
 

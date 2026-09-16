@@ -1,0 +1,18 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: omni-migrate-candidate
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      serviceAccountName: omni-runtime
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: omni-api:candidate
+          command: ["alembic", "upgrade", "head"]
+          envFrom: [{secretRef: {name: omni-runtime}}]
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}

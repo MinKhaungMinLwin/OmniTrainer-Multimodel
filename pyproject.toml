@@ -48,6 +48,7 @@ omni-api = "services.api.omni_api.main:main"
 omni-worker = "services.worker.omni_worker.main:main"
 omni-seed = "services.api.omni_api.seed:main"
 omni-openapi = "services.api.omni_api.openapi:main"
+omni-voice = "services.voice.omni_voice.main:main"
 
 [tool.black]
 line-length = 120
@@ -64,6 +65,7 @@ exclude = ["evals*", "tests*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-m 'not integration'"
 markers = [
     "integration: makes live requests to an external service and is opt-in",
@@ -90,6 +92,7 @@ platform = [
     "boto3>=1.40.0",
     "python-multipart>=0.0.20",
     "reportlab>=4.4.0",
+    "google-genai>=1.45.0",
 ]
 dev = [
     "pytest>=8.4.2",

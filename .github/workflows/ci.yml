@@ -30,6 +30,8 @@ jobs:
           USER_API_KEY: unit-test-user-key
           DEFAULT_GOOGLE_MODEL: gemini-2.5-flash-lite
         run: uv run pytest
+      - name: Enforce release evaluation gate
+        run: make release-gate
       - name: Verify migrations
         env:
           OMNI_DATABASE_URL: sqlite+aiosqlite:////tmp/omni-migrations.db
@@ -55,7 +57,7 @@ jobs:
       - run: npm ci
       - name: Verify generated API contracts
         run: |
-          uv run omni-openapi
+          uv run python -m services.api.omni_api.openapi
           npm run generate:contracts
           git diff --exit-code -- packages/contracts
       - run: npm run format:check
@@ -66,14 +68,40 @@ jobs:
       - name: Audit high-severity production dependencies
         run: npm audit --omit=dev --audit-level=high
 
+  infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+      - name: Validate Terraform
+        run: |
+          terraform -chdir=infra/terraform fmt -check -recursive
+          terraform -chdir=infra/terraform init -backend=false
+          terraform -chdir=infra/terraform validate
+      - name: Render stable and canary Kubernetes manifests
+        run: |
+          kubectl kustomize deploy/kubernetes/base >/tmp/omni-stable.yaml
+          kubectl kustomize deploy/kubernetes/canary >/tmp/omni-canary.yaml
+
   containers:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install browser for end-to-end tests
+        run: npx playwright install --with-deps chromium
       - name: Build and start the platform stack
         run: docker compose --profile platform up -d --build --wait
       - name: Smoke-test the containerized API
         run: curl --fail --silent --show-error http://localhost:8001/health/ready
+      - name: Run operations and accessibility end-to-end tests
+        run: npm run test:e2e
       - name: Show service state
         if: always()
         run: docker compose --profile platform ps

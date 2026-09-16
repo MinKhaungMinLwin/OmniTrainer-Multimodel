@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n api,worker,web -c cyan,yellow,magenta \"uv run omni-api\" \"uv run omni-worker\" \"npm run dev:web\"",
+    "dev": "concurrently -n api,worker,web -c cyan,yellow,magenta \"uv run python -m services.api.omni_api.main\" \"uv run python -m services.worker.omni_worker.main\" \"npm run dev:web\"",
     "dev:web": "npm run dev --workspace @omni/web",
     "dev:mobile": "npm run dev --workspace @omni/mobile",
     "build": "npm run build --workspaces --if-present",
@@ -16,10 +16,13 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "format": "prettier --write \"{apps,packages}/**/*.{ts,tsx,js,json,css}\"",
     "format:check": "prettier --check \"{apps,packages}/**/*.{ts,tsx,js,json,css}\"",
+    "test:e2e": "playwright test",
     "generate:contracts": "openapi-typescript packages/contracts/openapi.json -o packages/contracts/src/schema.d.ts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^9.38.0",
+    "@playwright/test": "^1.63.0",
     "concurrently": "^9.2.1",
     "eslint": "^9.38.0",
     "eslint-plugin-react-hooks": "^7.0.1",

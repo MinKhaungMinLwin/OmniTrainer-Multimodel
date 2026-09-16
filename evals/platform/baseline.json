@@ -1,0 +1,14 @@
+{
+  "version": "m5-baseline-v1",
+  "samples": 100,
+  "segments": {"noisy": 20, "accented": 20, "interruptions": 20, "consent": 20, "tool_use": 20},
+  "metrics": {
+    "task_success_rate": 0.94,
+    "grounded_response_rate": 0.98,
+    "interruption_success_rate": 0.94,
+    "safe_transfer_rate": 1.0,
+    "false_action_rate": 0.0,
+    "p95_first_audio_ms": 710,
+    "cost_per_success_usd": 0.052
+  }
+}

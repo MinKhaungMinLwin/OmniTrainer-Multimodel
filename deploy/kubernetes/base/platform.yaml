@@ -1,0 +1,144 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: omni
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: omni-runtime
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: omni-migrate
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      serviceAccountName: omni-runtime
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: omni-api:latest
+          command: ["alembic", "upgrade", "head"]
+          envFrom: [{secretRef: {name: omni-runtime}}]
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: omni-api
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: omni-api}}
+  template:
+    metadata: {labels: {app: omni-api, release-track: stable}}
+    spec:
+      serviceAccountName: omni-runtime
+      containers:
+        - name: api
+          image: omni-api:latest
+          ports: [{containerPort: 8001}]
+          envFrom: [{secretRef: {name: omni-runtime}}]
+          readinessProbe: {httpGet: {path: /health/ready, port: 8001}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health/live, port: 8001}, periodSeconds: 10}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: omni-voice
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: omni-voice, release-track: stable}}
+  template:
+    metadata: {labels: {app: omni-voice, release-track: stable}}
+    spec:
+      serviceAccountName: omni-runtime
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: voice
+          image: omni-voice:latest
+          ports: [{containerPort: 8002}]
+          envFrom: [{secretRef: {name: omni-runtime}}]
+          readinessProbe: {httpGet: {path: /health/ready, port: 8002}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health/live, port: 8002}, periodSeconds: 10}
+          lifecycle: {preStop: {exec: {command: ["sh", "-c", "sleep 20"]}}}
+          resources:
+            requests: {cpu: 500m, memory: 512Mi}
+            limits: {cpu: "2", memory: 2Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: omni-worker
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: omni-worker}}
+  template:
+    metadata: {labels: {app: omni-worker, release-track: stable}}
+    spec:
+      serviceAccountName: omni-runtime
+      containers:
+        - name: worker
+          image: omni-worker:latest
+          envFrom: [{secretRef: {name: omni-runtime}}]
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: omni-api}
+spec:
+  selector: {app: omni-api}
+  ports: [{port: 80, targetPort: 8001}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: omni-voice}
+spec:
+  selector: {app: omni-voice}
+  ports: [{port: 80, targetPort: 8002}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: omni-voice}
+spec:
+  minAvailable: 2
+  selector: {matchLabels: {app: omni-voice}}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: omni-voice}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: omni-voice}
+  minReplicas: 3
+  maxReplicas: 30
+  behavior:
+    scaleUp: {stabilizationWindowSeconds: 0, policies: [{type: Percent, value: 100, periodSeconds: 60}]}
+    scaleDown: {stabilizationWindowSeconds: 300, policies: [{type: Percent, value: 25, periodSeconds: 60}]}
+  metrics:
+    - type: Resource
+      resource: {name: cpu, target: {type: Utilization, averageUtilization: 60}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-platform-ingress}
+spec:
+  podSelector: {matchExpressions: [{key: app, operator: In, values: [omni-api, omni-voice]}]}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]

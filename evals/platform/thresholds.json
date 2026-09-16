@@ -1,0 +1,19 @@
+{
+  "minimum_samples": 8,
+  "minimum": {
+    "task_success_rate": 0.9,
+    "grounded_response_rate": 0.95,
+    "interruption_success_rate": 0.9,
+    "safe_transfer_rate": 1.0
+  },
+  "maximum": {
+    "false_action_rate": 0.01,
+    "p95_first_audio_ms": 800,
+    "cost_per_success_usd": 0.08
+  },
+  "maximum_regression": {
+    "task_success_rate": 0.02,
+    "grounded_response_rate": 0.01,
+    "interruption_success_rate": 0.03
+  }
+}

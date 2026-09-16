@@ -127,6 +127,7 @@ def test_customer_to_issued_invoice_lifecycle_is_audited_and_idempotent(tmp_path
     finally:
         connection.close()
     assert [event[0] for event in events] == [
+        "customer.created",
         "job.created",
         "job.scheduled",
         "job.completed",

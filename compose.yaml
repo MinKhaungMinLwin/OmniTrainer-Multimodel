@@ -14,6 +14,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {cpus: "2", memory: 2G}
 
   redis:
     image: redis:8-alpine
@@ -27,6 +31,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {cpus: "1", memory: 1G}
 
   minio:
     image: quay.io/minio/minio:latest
@@ -44,6 +52,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {cpus: "1", memory: 1G}
 
   migrate:
     profiles: ["platform"]
@@ -61,6 +73,18 @@ services:
       OMNI_S3_ACCESS_KEY: omni
       OMNI_S3_SECRET_KEY: omni-development-password
       OMNI_S3_BUCKET: omni-attachments
+      OMNI_AI_PROVIDER: ${OMNI_AI_PROVIDER:-local}
+      OMNI_AI_MODEL: ${OMNI_AI_MODEL:-omni-copilot-local-v1}
+      OMNI_AI_RUNS_PER_MINUTE: "30"
+      OMNI_AI_TIMEOUT_SECONDS: "15"
+      OMNI_VOICE_WEBHOOK_SECRET: local-voice-webhook-secret-change-me
+      OMNI_VOICE_MEDIA_SECRET: local-voice-media-secret-change-me
+      OMNI_VOICE_PUBLIC_BASE_URL: http://localhost:8002
+      OMNI_VOICE_MAX_FRAME_BYTES: "65536"
+      OMNI_VOICE_MAX_BUFFERED_FRAMES: "50"
+      OMNI_VOICE_STALE_FRAME_MS: "2000"
+      OMNI_VOICE_STAGE_TIMEOUT_MS: "1500"
+      OMNI_VOICE_MAX_GATEWAY_SESSIONS: "500"
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,7 +105,13 @@ services:
     build:
       context: .
       dockerfile: services/api/Dockerfile
-    environment: *platform-environment
+    environment:
+      <<: *platform-environment
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GOOGLE_GEMINI_BASE_URL: ${GOOGLE_GEMINI_BASE_URL:-}
+      OMNI_GEMINI_STT_MODEL: ${OMNI_GEMINI_STT_MODEL:-gemini-3.5-flash-lite}
+      OMNI_GEMINI_TTS_MODEL: ${OMNI_GEMINI_TTS_MODEL:-gemini-2.5-flash-preview-tts}
+      OMNI_GEMINI_TTS_VOICE: ${OMNI_GEMINI_TTS_VOICE:-Kore}
     ports:
       - "8001:8001"
     depends_on:
@@ -102,6 +132,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {cpus: "1", memory: 1G}
+        reservations: {cpus: "0.25", memory: 256M}
 
   worker:
     profiles: ["platform"]
@@ -123,8 +158,71 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {cpus: "1", memory: 1G}
+        reservations: {cpus: "0.25", memory: 256M}
+
+  voice:
+    profiles: ["platform"]
+    build:
+      context: .
+      dockerfile: services/voice/Dockerfile
+    environment: *platform-environment
+    ports:
+      - "8002:8002"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8002/health/ready', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    stop_grace_period: 90s
+    deploy:
+      resources:
+        limits: {cpus: "2", memory: 2G}
+        reservations: {cpus: "0.5", memory: 512M}
+
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - omni-prometheus:/prometheus
+    ports: ["9090:9090"]
+    restart: unless-stopped
+
+  grafana:
+    profiles: ["monitoring"]
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_SECURITY_ADMIN_USER: omni
+      GF_SECURITY_ADMIN_PASSWORD: omni-development-password
+    volumes:
+      - omni-grafana:/var/lib/grafana
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+    restart: unless-stopped
 
 volumes:
   omni-postgres:
   omni-redis:
   omni-minio:
+  omni-prometheus:
+  omni-grafana:

@@ -29,3 +29,9 @@ node_modules/
 dist/
 build/
 .expo/
+playwright-report/
+test-results/
+.terraform/
+*.tfstate
+*.tfstate.*
+data/recovery/

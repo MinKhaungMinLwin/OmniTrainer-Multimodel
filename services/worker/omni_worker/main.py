@@ -3,6 +3,7 @@ import os
 
 from redis.asyncio import Redis
 
+from services.worker.omni_worker.automation_dispatcher import dispatch_automation_work
 from services.worker.omni_worker.jobs import JobEnvelope, execute_job
 
 QUEUE_NAME = "omni:jobs"
@@ -38,6 +39,10 @@ async def run_worker() -> None:
     )
     try:
         while True:
+            try:
+                await dispatch_automation_work(redis)
+            except Exception as exc:
+                print(f"Automation dispatch failed: {exc}")
             message = await redis.blpop(QUEUE_NAME, timeout=5)
             if message is not None:
                 _, body = message

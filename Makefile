@@ -1,4 +1,4 @@
-.PHONY: setup infra-up infra-down platform-up platform-down migrate seed api worker web mobile dev test lint format contracts build images
+.PHONY: setup infra-up infra-down platform-up platform-down migrate seed api worker voice web mobile dev test lint format contracts build images release-gate infra-validate recovery-drill monitoring-up
 
 setup:
 	uv sync --locked --dev
@@ -20,13 +20,16 @@ migrate:
 	uv run alembic upgrade head
 
 seed:
-	uv run omni-seed
+	uv run python -m services.api.omni_api.seed
 
 api:
-	uv run omni-api
+	uv run python -m services.api.omni_api.main
 
 worker:
-	uv run omni-worker
+	uv run python -m services.worker.omni_worker.main
+
+voice:
+	uv run python -m services.voice.omni_voice.main
 
 web:
 	npm run dev:web
@@ -53,7 +56,7 @@ format:
 	npm run format
 
 contracts:
-	uv run omni-openapi
+	uv run python -m services.api.omni_api.openapi
 	npm run generate:contracts
 
 build:
@@ -62,3 +65,20 @@ build:
 images:
 	docker build -f services/api/Dockerfile -t omni-api:local .
 	docker build -f services/worker/Dockerfile -t omni-worker:local .
+	docker build -f services/voice/Dockerfile -t omni-voice:local .
+
+release-gate:
+	uv run python -m evals.platform.release_gate --baseline evals/platform/baseline.json --candidate evals/platform/candidate.json --thresholds evals/platform/thresholds.json
+
+infra-validate:
+	terraform -chdir=infra/terraform fmt -check -recursive
+	terraform -chdir=infra/terraform init -backend=false
+	terraform -chdir=infra/terraform validate
+	kubectl kustomize deploy/kubernetes/base >/dev/null
+	kubectl kustomize deploy/kubernetes/canary >/dev/null
+
+recovery-drill:
+	bash scripts/recovery_drill.sh
+
+monitoring-up:
+	docker compose --profile monitoring up -d prometheus grafana

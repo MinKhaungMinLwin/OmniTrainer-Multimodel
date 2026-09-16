@@ -11,12 +11,15 @@ class AttachmentStorage:
         if self.settings.storage_backend == "s3":
             client = self._s3_client()
             self._ensure_bucket(client)
-            client.put_object(
+            options = dict(
                 Bucket=self.settings.s3_bucket,
                 Key=object_key,
                 Body=content,
                 ContentType=content_type,
             )
+            if self.settings.s3_server_side_encryption:
+                options["ServerSideEncryption"] = self.settings.s3_server_side_encryption
+            client.put_object(**options)
             return
         destination = Path(self.settings.attachment_dir) / object_key
         destination.parent.mkdir(parents=True, exist_ok=True)

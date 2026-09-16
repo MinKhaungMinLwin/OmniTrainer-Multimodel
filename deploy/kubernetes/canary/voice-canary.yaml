@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: omni-voice-canary
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: omni-voice, release-track: canary}}
+  template:
+    metadata: {labels: {app: omni-voice, release-track: canary}}
+    spec:
+      serviceAccountName: omni-runtime
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: voice
+          image: omni-voice:candidate
+          ports: [{containerPort: 8002}]
+          envFrom: [{secretRef: {name: omni-runtime}}]
+          readinessProbe: {httpGet: {path: /health/ready, port: 8002}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health/live, port: 8002}, periodSeconds: 10}
+          lifecycle: {preStop: {exec: {command: ["sh", "-c", "sleep 20"]}}}
+          resources:
+            requests: {cpu: 500m, memory: 512Mi}
+            limits: {cpu: "2", memory: 2Gi}

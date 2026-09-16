@@ -1,0 +1,92 @@
+name: Canary deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        type: choice
+        options: [staging, production]
+      promote:
+        description: Promote after canary verification
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+  attestations: write
+
+concurrency:
+  group: omni-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --dev
+      - name: Quality, safety, latency, cost, and drift gate
+        run: make release-gate
+
+  build:
+    needs: gate
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build, scan-on-registry, push, and attest release images
+        id: image
+        run: |
+          prefix="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+          for service in api worker voice; do
+            docker buildx build --provenance=mode=max --sbom=true --push \
+              -f "services/${service}/Dockerfile" -t "${prefix}/omni-${service}:${GITHUB_SHA}" .
+          done
+          digest=$(docker buildx imagetools inspect "${prefix}/omni-voice:${GITHUB_SHA}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+  canary:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      OMNI_CANDIDATE_TAG: ${{ github.sha }}
+      OMNI_IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
+      KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_DATA }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure cluster identity
+        run: echo "$KUBECONFIG_DATA" | base64 --decode > "$RUNNER_TEMP/kubeconfig"
+      - name: Run migration and deploy canary
+        env:
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+        run: bash scripts/canary_release.sh deploy
+      - name: Verify canary health and error budget
+        env:
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+        run: |
+          kubectl -n omni wait --for=condition=available deployment/omni-voice-canary --timeout=5m
+          kubectl -n omni get --raw /readyz
+      - name: Promote explicitly approved canary
+        if: inputs.promote
+        env:
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+        run: bash scripts/canary_release.sh promote
+      - name: Roll back failed canary
+        if: failure()
+        env:
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
+        run: bash scripts/canary_release.sh rollback

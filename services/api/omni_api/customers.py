@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.api.omni_api.audit import add_audit_event
 from services.api.omni_api.auth import TenantContext, get_tenant_context, require_roles
 from services.api.omni_api.database import get_session
-from services.api.omni_api.models import Customer
+from services.api.omni_api.models import Customer, OutboxEvent
 from services.api.omni_api.schemas import CustomerCreate, CustomerList, CustomerRead
 
 router = APIRouter(prefix="/customers", tags=["customers"])
@@ -49,6 +51,17 @@ async def create_customer(
         resource_id=customer.id,
         correlation_id=request.state.correlation_id,
         payload={"name": customer.name},
+    )
+    session.add(
+        OutboxEvent(
+            tenant_id=context.tenant_id,
+            event_type="customer.created",
+            aggregate_type="customer",
+            aggregate_id=customer.id,
+            payload={"name": customer.name},
+            occurred_at=datetime.now(timezone.utc),
+            correlation_id=request.state.correlation_id,
+        )
     )
     await session.commit()
     await session.refresh(customer)
