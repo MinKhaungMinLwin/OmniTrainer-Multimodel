@@ -1,0 +1,5 @@
+# Synthetic JWT signing keys used only by deterministic tests.
+41881b8f364a61db7df0184855a24bf865f47aca:tests/test_ai_copilot.py:generic-api-key:14
+41881b8f364a61db7df0184855a24bf865f47aca:tests/test_operations_mvp.py:generic-api-key:14
+41881b8f364a61db7df0184855a24bf865f47aca:tests/test_operations_api.py:generic-api-key:15
+e747fea136848cb088d8a55279f81c546e74529c:tests/test_operations_api.py:generic-api-key:15

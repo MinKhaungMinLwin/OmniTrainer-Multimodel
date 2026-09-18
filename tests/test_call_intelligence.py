@@ -10,7 +10,7 @@ def settings(path: Path) -> Settings:
     return Settings(
         environment="test",
         database_url=f"sqlite+aiosqlite:///{path}",
-        jwt_secret="test-secret-with-at-least-thirty-two-characters",
+        jwt_secret="test-" * 8,
         allow_dev_auth=True,
         auto_create_schema=True,
         attachment_dir=str(path.parent / "objects"),

@@ -32,7 +32,7 @@ def build_client(path: Path) -> TestClient:
             Settings(
                 environment="test",
                 database_url=f"sqlite+aiosqlite:///{path}",
-                jwt_secret="test-secret-with-at-least-thirty-two-characters",
+                jwt_secret="test-" * 8,
                 allow_dev_auth=True,
                 auto_create_schema=True,
             )

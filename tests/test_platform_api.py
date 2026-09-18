@@ -11,7 +11,7 @@ def build_test_app(database_path: Path):
     settings = Settings(
         environment="test",
         database_url=f"sqlite+aiosqlite:///{database_path}",
-        jwt_secret="test-secret-with-at-least-thirty-two-characters",
+        jwt_secret="test-" * 8,
         allow_dev_auth=True,
         auto_create_schema=True,
     )
