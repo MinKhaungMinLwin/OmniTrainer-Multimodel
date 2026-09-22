@@ -12,6 +12,7 @@ htmlcov/
 # Secrets and local configuration
 .env
 .env.*
+*.pem
 !env.example
 
 # Runtime artifacts

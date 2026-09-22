@@ -1,0 +1,229 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-platform-environment: &platform-environment
+  OMNI_ENVIRONMENT: staging
+  OMNI_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB}
+  OMNI_REDIS_URL: redis://redis:6379/0
+  OMNI_JWT_SECRET: ${OMNI_JWT_SECRET:?Set OMNI_JWT_SECRET}
+  OMNI_ALLOW_DEV_AUTH: ${OMNI_ALLOW_DEV_AUTH:-false}
+  OMNI_AUTO_CREATE_SCHEMA: "false"
+  OMNI_CORS_ORIGINS: '["${WEB_ORIGIN:?Set WEB_ORIGIN}"]'
+  OMNI_STORAGE_BACKEND: s3
+  OMNI_S3_ENDPOINT_URL: http://minio:9000
+  OMNI_S3_ACCESS_KEY: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+  OMNI_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+  OMNI_S3_BUCKET: ${OMNI_S3_BUCKET:-omni-attachments}
+  OMNI_AI_PROVIDER: ${OMNI_AI_PROVIDER:-gemini}
+  OMNI_AI_MODEL: ${OMNI_AI_MODEL:-gemini-3.5-flash-lite}
+  OMNI_AI_RUNS_PER_MINUTE: ${OMNI_AI_RUNS_PER_MINUTE:-30}
+  OMNI_AI_TIMEOUT_SECONDS: ${OMNI_AI_TIMEOUT_SECONDS:-30}
+  OMNI_GEMINI_STT_MODEL: ${OMNI_GEMINI_STT_MODEL:-gemini-3.5-flash-lite}
+  OMNI_GEMINI_TTS_MODEL: ${OMNI_GEMINI_TTS_MODEL:-gemini-2.5-flash-preview-tts}
+  OMNI_GEMINI_TTS_VOICE: ${OMNI_GEMINI_TTS_VOICE:-Kore}
+  OMNI_VOICE_WEBHOOK_SECRET: ${OMNI_VOICE_WEBHOOK_SECRET:?Set OMNI_VOICE_WEBHOOK_SECRET}
+  OMNI_VOICE_MEDIA_SECRET: ${OMNI_VOICE_MEDIA_SECRET:?Set OMNI_VOICE_MEDIA_SECRET}
+  OMNI_VOICE_PUBLIC_BASE_URL: https://${VOICE_DOMAIN:?Set VOICE_DOMAIN}
+  OMNI_VOICE_MAX_FRAME_BYTES: "65536"
+  OMNI_VOICE_MAX_BUFFERED_FRAMES: "50"
+  OMNI_VOICE_STALE_FRAME_MS: "2000"
+  OMNI_VOICE_STAGE_TIMEOUT_MS: "1500"
+  OMNI_VOICE_MAX_GATEWAY_SESSIONS: ${OMNI_VOICE_MAX_GATEWAY_SESSIONS:-5}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - staging-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 640m
+    shm_size: 128m
+    logging: *default-logging
+
+  redis:
+    image: redis:8-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 192mb
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - staging-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *default-logging
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+    volumes:
+      - staging-minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 384m
+    logging: *default-logging
+
+  migrate:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    command: alembic upgrade head
+    environment: *platform-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 384m
+    logging: *default-logging
+
+  seed:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    command: python -m services.api.omni_api.seed
+    environment: *platform-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 384m
+    logging: *default-logging
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      <<: *platform-environment
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY}
+      GOOGLE_GEMINI_BASE_URL: ${GOOGLE_GEMINI_BASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/ready', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    mem_limit: 640m
+    logging: *default-logging
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+    environment: *platform-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os; from redis import Redis; Redis.from_url(os.environ['OMNI_REDIS_URL']).ping()",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 384m
+    logging: *default-logging
+
+  voice:
+    build:
+      context: .
+      dockerfile: services/voice/Dockerfile
+    environment: *platform-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8002/health/ready', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    stop_grace_period: 90s
+    mem_limit: 512m
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN}
+      VOICE_DOMAIN: ${VOICE_DOMAIN:?Set VOICE_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/ec2/Caddyfile:/etc/caddy/Caddyfile:ro
+      - staging-caddy-data:/data
+      - staging-caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      voice:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: *default-logging
+
+volumes:
+  staging-postgres:
+  staging-redis:
+  staging-minio:
+  staging-caddy-data:
+  staging-caddy-config:
