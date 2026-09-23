@@ -6,7 +6,7 @@ not a highly available production deployment.
 
 ## Prerequisites
 
-- Amazon Linux 2023 EC2 host with Docker and Docker Compose
+- Amazon Linux 2023 EC2 host with Docker, Docker Compose, and Docker Buildx
 - 4 GB RAM and at least 20 GB of disk
 - TCP ports 80 and 443 open; SSH restricted to the operator's IP
 - `api` and `voice` DNS A records pointing to the EC2 Elastic IP
