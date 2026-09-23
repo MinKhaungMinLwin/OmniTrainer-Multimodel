@@ -791,6 +791,13 @@ article > span {
   color: #596760;
   text-align: center;
 }
+.composer-shell > .audio-status {
+  color: #176b4d;
+  font-weight: 700;
+}
+.composer-shell > .audio-error {
+  margin-top: 10px;
+}
 .run-actions {
   margin-bottom: 8px;
   color: #66756f;

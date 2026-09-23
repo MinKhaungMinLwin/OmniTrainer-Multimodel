@@ -24,16 +24,33 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const TOKEN_KEY = "omni.access-token";
 const TENANT_KEY = "omni.tenant-id";
+const STOP_SPEECH_EVENT = "omni:stop-speech";
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1 } },
 });
+
+function stopActiveSpeech() {
+  window.dispatchEvent(new Event(STOP_SPEECH_EVENT));
+}
+
+export function microphoneErrorMessage(error: unknown): string {
+  if (error instanceof DOMException) {
+    if (["NotAllowedError", "SecurityError"].includes(error.name))
+      return "Microphone access is blocked. Open this site's permissions in your browser, allow Microphone, then try again.";
+    if (["NotFoundError", "DevicesNotFoundError"].includes(error.name))
+      return "No microphone was found. Connect or enable a microphone, then try again.";
+    if (["NotReadableError", "TrackStartError"].includes(error.name))
+      return "The microphone is busy in another application. Close the other recording app, then try again.";
+  }
+  return error instanceof Error ? error.message : "Microphone access failed";
+}
 
 const customerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
@@ -1698,7 +1715,7 @@ function ApprovalCard({
   );
 }
 
-function ChatMessage({
+export function ChatMessage({
   message,
   api,
 }: {
@@ -1707,27 +1724,78 @@ function ChatMessage({
 }) {
   const [speaking, setSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const playbackDoneRef = useRef<(() => void) | null>(null);
+  const speechRequestRef = useRef(0);
+
+  const releaseAudio = useCallback(() => {
+    playbackDoneRef.current?.();
+    playbackDoneRef.current = null;
+    const audio = audioRef.current;
+    audioRef.current = null;
+    if (audio) {
+      audio.onended = null;
+      audio.onpause = null;
+      audio.onerror = null;
+      audio.pause();
+      audio.removeAttribute("src");
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
+    speechRequestRef.current += 1;
+    releaseAudio();
+    setSpeaking(false);
+  }, [releaseAudio]);
+
+  useEffect(() => {
+    window.addEventListener(STOP_SPEECH_EVENT, stopSpeaking);
+    return () => {
+      window.removeEventListener(STOP_SPEECH_EVENT, stopSpeaking);
+      speechRequestRef.current += 1;
+      releaseAudio();
+    };
+  }, [releaseAudio, stopSpeaking]);
 
   const speak = async () => {
+    if (speaking) {
+      stopSpeaking();
+      return;
+    }
+    stopActiveSpeech();
+    const requestId = speechRequestRef.current + 1;
+    speechRequestRef.current = requestId;
     setSpeaking(true);
     setSpeechError(null);
-    let url: string | null = null;
     try {
       const blob = await api.synthesizeSpeech(message.content);
-      url = URL.createObjectURL(blob);
+      if (requestId !== speechRequestRef.current) return;
+      const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
       const audio = new Audio(url);
+      audioRef.current = audio;
       await audio.play();
       await new Promise<void>((resolve, reject) => {
+        playbackDoneRef.current = resolve;
         audio.onended = () => resolve();
+        audio.onpause = () => resolve();
         audio.onerror = () => reject(new Error("Audio playback failed"));
       });
     } catch (error) {
-      setSpeechError(
-        error instanceof Error ? error.message : "Speech playback failed",
-      );
+      if (requestId === speechRequestRef.current)
+        setSpeechError(
+          error instanceof Error ? error.message : "Speech playback failed",
+        );
     } finally {
-      if (url) URL.revokeObjectURL(url);
-      setSpeaking(false);
+      if (requestId === speechRequestRef.current) {
+        releaseAudio();
+        setSpeaking(false);
+      }
     }
   };
 
@@ -1738,10 +1806,10 @@ function ChatMessage({
       {message.role === "assistant" && (
         <button
           className="speak-message"
-          disabled={speaking}
           onClick={() => void speak()}
+          aria-label={speaking ? "Stop read aloud" : "Read aloud"}
         >
-          {speaking ? "Speaking…" : "🔊 Read aloud"}
+          {speaking ? "■ Stop audio" : "🔊 Read aloud"}
         </button>
       )}
       {speechError && <small className="speech-error">{speechError}</small>}
@@ -3125,6 +3193,7 @@ function AssistantPage({
 
   const startRecording = async () => {
     setAudioError(null);
+    stopActiveSpeech();
     if (
       !navigator.mediaDevices?.getUserMedia ||
       typeof MediaRecorder === "undefined"
@@ -3139,6 +3208,7 @@ function AssistantPage({
         "audio/webm;codecs=opus",
         "audio/webm",
         "audio/ogg;codecs=opus",
+        "audio/mp4",
       ].find((type) => MediaRecorder.isTypeSupported(type));
       const recorder = new MediaRecorder(
         stream,
@@ -3146,6 +3216,14 @@ function AssistantPage({
       );
       const chunks: Blob[] = [];
       recorderRef.current = recorder;
+      recorder.onerror = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        setRecording(false);
+        setAudioError(
+          "Recording failed. Check the microphone permission and try again.",
+        );
+      };
       recorder.ondataavailable = (event) => {
         if (event.data.size) chunks.push(event.data);
       };
@@ -3174,9 +3252,7 @@ function AssistantPage({
       recorder.start(250);
       setRecording(true);
     } catch (error) {
-      setAudioError(
-        error instanceof Error ? error.message : "Microphone access failed",
-      );
+      setAudioError(microphoneErrorMessage(error));
     }
   };
 
@@ -3402,7 +3478,6 @@ function AssistantPage({
                 />
               )}
               {error && <div className="error-banner">{error.message}</div>}
-              {audioError && <div className="error-banner">{audioError}</div>}
             </section>
             <footer className="composer-shell">
               {activeRun?.run.status === "completed" && (
@@ -3481,6 +3556,21 @@ function AssistantPage({
                   Send
                 </button>
               </form>
+              {recording && (
+                <small className="audio-status" role="status">
+                  Listening… click Stop when you finish speaking.
+                </small>
+              )}
+              {transcribing && (
+                <small className="audio-status" role="status">
+                  Transcribing your recording…
+                </small>
+              )}
+              {audioError && (
+                <div className="error-banner audio-error" role="alert">
+                  {audioError}
+                </div>
+              )}
               <small>
                 AI can make mistakes. Consequential actions always require your
                 approval.

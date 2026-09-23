@@ -14,6 +14,7 @@ SUPPORTED_AUDIO_TYPES = {
     "audio/m4a",
     "audio/mp3",
     "audio/mpeg",
+    "audio/mp4",
     "audio/ogg",
     "audio/opus",
     "audio/wav",
