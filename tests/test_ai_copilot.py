@@ -2,7 +2,11 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from services.api.omni_api.ai_tools import TOOL_REGISTRY, normalize_tool_arguments
+from services.api.omni_api.ai_tools import (
+    TOOL_REGISTRY,
+    normalize_schedule_timestamp,
+    normalize_tool_arguments,
+)
 from services.api.omni_api.config import Settings
 from services.api.omni_api.main import create_app
 
@@ -50,6 +54,8 @@ def test_schedule_tool_discards_unexpected_customer_context():
         "ends_at": "2026-09-25T11:00:00",
         "timezone": "UTC",
     }
+    assert normalize_schedule_timestamp(arguments["starts_at"], arguments["timezone"]) == ("2026-09-25T10:00:00+00:00")
+    assert normalize_schedule_timestamp("2026-09-25T10:00:00", "Asia/Bangkok") == ("2026-09-25T10:00:00+07:00")
 
 
 def approve(client: TestClient, headers: dict[str, str], run: dict) -> dict:

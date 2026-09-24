@@ -3,6 +3,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, Request
 from sqlalchemy import or_, select
@@ -269,6 +270,19 @@ def normalize_tool_arguments(definition: ToolDefinition, arguments: dict[str, An
     """Keep only the explicitly allowlisted input fields for a model tool call."""
     allowed = definition.input_schema["properties"]
     return {name: value for name, value in arguments.items() if name in allowed}
+
+
+def normalize_schedule_timestamp(value: str, timezone_name: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise ToolInputError("Appointment timestamp must be an ISO date and time") from None
+    if parsed.tzinfo is None:
+        try:
+            parsed = parsed.replace(tzinfo=ZoneInfo(timezone_name))
+        except ZoneInfoNotFoundError:
+            raise ToolInputError(f'Unknown appointment timezone "{timezone_name}"') from None
+    return parsed.isoformat()
 
 
 def words(value: str) -> set[str]:
@@ -602,12 +616,13 @@ async def execute_tool(
         required(arguments, "starts_at", "ends_at")
         job = await resolve_job(session, context.tenant_id, arguments)
         technician = await resolve_technician_reference(session, context.tenant_id, arguments)
+        timezone_name = arguments.get("timezone") or "UTC"
         appointment = await schedule_job(
             job.id,
             ScheduleJob(
-                starts_at=arguments["starts_at"],
-                ends_at=arguments["ends_at"],
-                timezone=arguments.get("timezone") or "UTC",
+                starts_at=normalize_schedule_timestamp(arguments["starts_at"], timezone_name),
+                ends_at=normalize_schedule_timestamp(arguments["ends_at"], timezone_name),
+                timezone=timezone_name,
                 technician_id=technician.id if technician else None,
                 expected_version=job.version,
             ),
