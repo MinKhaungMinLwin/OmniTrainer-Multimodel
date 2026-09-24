@@ -15,6 +15,7 @@ def build_app(database_path: Path):
             allow_dev_auth=True,
             auto_create_schema=True,
             storage_backend="local",
+            ai_provider="local",
             ai_runs_per_minute=100,
         )
     )
@@ -29,6 +30,100 @@ def authenticate(client: TestClient) -> dict[str, str]:
 
 def command(headers: dict[str, str], key: str) -> dict[str, str]:
     return {**headers, "Idempotency-Key": key}
+
+
+def approve(client: TestClient, headers: dict[str, str], run: dict) -> dict:
+    approval = run["approvals"][0]
+    response = client.post(
+        f"/api/v1/ai/approvals/{approval['id']}/decision",
+        headers=headers,
+        json={"decision": "approve", "reason": "Reviewed in AI operations test"},
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_copilot_creates_customers_jobs_and_team_members_with_human_review(tmp_path: Path):
+    with TestClient(build_app(tmp_path / "ai-writes.db")) as client:
+        headers = authenticate(client)
+        conversation = client.post("/api/v1/ai/conversations", headers=headers, json={}).json()
+
+        customer_run = client.post(
+            f"/api/v1/ai/conversations/{conversation['id']}/runs",
+            headers=command(headers, "create-customer-run"),
+            json={"content": "I want you to add the James X in our customer list."},
+        ).json()
+        assert customer_run["run"]["status"] == "waiting_approval"
+        assert customer_run["tools"][0]["name"] == "create_customer"
+        assert customer_run["approvals"][0]["proposed_args"]["name"] == "James X"
+        approved_customer = approve(client, headers, customer_run)
+        assert approved_customer["run"]["status"] == "completed"
+        assert "Added customer" in approved_customer["tools"][0]["output"]["summary"]
+        assert any(
+            item["name"] == "James X" for item in client.get("/api/v1/customers", headers=headers).json()["items"]
+        )
+
+        job_run = client.post(
+            f"/api/v1/ai/conversations/{conversation['id']}/runs",
+            headers=command(headers, "create-job-by-name-run"),
+            json={"content": 'Create job "Install smart thermostat" for customer James X'},
+        ).json()
+        assert job_run["approvals"][0]["proposed_args"]["customer_name"] == "James X"
+        approved_job = approve(client, headers, job_run)
+        assert approved_job["run"]["status"] == "completed"
+        assert any(
+            item["title"] == "Install smart thermostat"
+            for item in client.get("/api/v1/jobs", headers=headers).json()["items"]
+        )
+
+        schedule_run = client.post(
+            f"/api/v1/ai/conversations/{conversation['id']}/runs",
+            headers=command(headers, "schedule-job-by-name-run"),
+            json={
+                "content": (
+                    'Schedule appointment for job "Install smart thermostat" '
+                    "from 2027-01-12T09:00:00Z to 2027-01-12T10:00:00Z"
+                )
+            },
+        ).json()
+        assert schedule_run["tools"][0]["name"] == "propose_schedule"
+        assert schedule_run["approvals"][0]["proposed_args"]["job_title"] == "Install smart thermostat"
+        approved_schedule = approve(client, headers, schedule_run)
+        assert approved_schedule["run"]["status"] == "completed"
+
+        job = next(
+            item
+            for item in client.get("/api/v1/jobs", headers=headers).json()["items"]
+            if item["title"] == "Install smart thermostat"
+        )
+        completed = client.post(
+            f"/api/v1/jobs/{job['id']}/complete",
+            headers=command(headers, "complete-ai-job"),
+            json={"expected_version": job["version"]},
+        )
+        assert completed.status_code == 200
+
+        invoice_run = client.post(
+            f"/api/v1/ai/conversations/{conversation['id']}/runs",
+            headers=command(headers, "invoice-job-by-name-run"),
+            json={"content": 'Draft invoice for job "Install smart thermostat" amount $250'},
+        ).json()
+        assert invoice_run["tools"][0]["name"] == "draft_invoice"
+        assert invoice_run["approvals"][0]["proposed_args"]["amount_cents"] == 25000
+        approved_invoice = approve(client, headers, invoice_run)
+        assert approved_invoice["run"]["status"] == "completed"
+        assert client.get("/api/v1/invoices", headers=headers).json()["total"] == 1
+
+        technician_run = client.post(
+            f"/api/v1/ai/conversations/{conversation['id']}/runs",
+            headers=command(headers, "create-technician-run"),
+            json={"content": 'Add technician "Sam Lee" with email sam.lee@example.com'},
+        ).json()
+        assert technician_run["tools"][0]["name"] == "create_technician"
+        approved_technician = approve(client, headers, technician_run)
+        assert approved_technician["run"]["status"] == "completed"
+        technicians = client.get("/api/v1/technicians", headers=headers).json()
+        assert any(item["name"] == "Sam Lee" and item["email"] == "sam.lee@example.com" for item in technicians)
 
 
 def test_streaming_rag_tools_approval_feedback_and_replay(tmp_path: Path):
@@ -109,7 +204,7 @@ def test_streaming_rag_tools_approval_feedback_and_replay(tmp_path: Path):
         )
         assert approved.status_code == 200
         approved_run = approved.json()
-        assert approved_run["run"]["status"] == "completed"
+        assert approved_run["run"]["status"] == "completed", approved_run
         assert approved_run["approvals"][0]["status"] == "edited"
         assert any(event["event_type"] == "corrected_result" for event in approved_run["events"])
         jobs = client.get("/api/v1/jobs", headers=headers).json()["items"]

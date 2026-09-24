@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from services.api.omni_api.auth import TenantContext
+from services.api.omni_api.customers import create_customer as create_customer_record
 from services.api.omni_api.models import (
     AvailabilityWindow,
     Customer,
@@ -24,7 +25,19 @@ from services.api.omni_api.models import (
 )
 from services.api.omni_api.operations import create_job, draft_invoice, schedule_job
 from services.api.omni_api.operations_mvp import add_job_note
-from services.api.omni_api.schemas import DraftInvoice, InvoiceRead, JobCreate, JobNoteCreate, JobRead, ScheduleJob
+from services.api.omni_api.operations_mvp import create_technician as create_technician_record
+from services.api.omni_api.schemas import (
+    CustomerCreate,
+    CustomerRead,
+    DraftInvoice,
+    InvoiceRead,
+    JobCreate,
+    JobNoteCreate,
+    JobRead,
+    ScheduleJob,
+    TechnicianCreate,
+    TechnicianRead,
+)
 
 
 class ToolInputError(ValueError):
@@ -88,6 +101,38 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
         ("owner", "dispatcher", "technician", "accountant", "reviewer", "administrator"),
         object_schema(["query"], {"query": {"type": "string", "minLength": 1}}),
     ),
+    "create_customer": ToolDefinition(
+        "create_customer",
+        "Create customer",
+        "Add a customer to the tenant customer list after human approval.",
+        "write",
+        ("owner", "dispatcher"),
+        object_schema(
+            ["name"],
+            {
+                "name": {"type": "string", "minLength": 1},
+                "email": {"type": ["string", "null"]},
+                "phone": {"type": ["string", "null"]},
+                "notes": {"type": ["string", "null"]},
+            },
+        ),
+    ),
+    "create_technician": ToolDefinition(
+        "create_technician",
+        "Add team technician",
+        "Add an active technician to the tenant team after human approval.",
+        "write",
+        ("owner", "dispatcher"),
+        object_schema(
+            ["name", "email"],
+            {
+                "name": {"type": "string", "minLength": 1},
+                "email": {"type": "string", "minLength": 3},
+                "phone": {"type": ["string", "null"]},
+                "timezone": {"type": "string", "minLength": 1},
+            },
+        ),
+    ),
     "draft_job": ToolDefinition(
         "draft_job",
         "Create draft job",
@@ -95,9 +140,10 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
         "write",
         ("owner", "dispatcher"),
         object_schema(
-            ["customer_id", "title"],
+            ["title"],
             {
-                "customer_id": {"type": "string", "format": "uuid"},
+                "customer_id": {"type": ["string", "null"], "format": "uuid"},
+                "customer_name": {"type": ["string", "null"]},
                 "title": {"type": "string", "minLength": 1},
                 "description": {"type": ["string", "null"]},
             },
@@ -110,13 +156,15 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
         "write",
         ("owner", "dispatcher"),
         object_schema(
-            ["job_id", "starts_at", "ends_at"],
+            ["starts_at", "ends_at"],
             {
-                "job_id": {"type": "string", "format": "uuid"},
+                "job_id": {"type": ["string", "null"], "format": "uuid"},
+                "job_title": {"type": ["string", "null"]},
                 "starts_at": {"type": "string", "format": "date-time"},
                 "ends_at": {"type": "string", "format": "date-time"},
                 "timezone": {"type": "string"},
                 "technician_id": {"type": ["string", "null"]},
+                "technician_name": {"type": ["string", "null"]},
             },
         ),
     ),
@@ -141,9 +189,10 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
         "write",
         ("owner", "accountant"),
         object_schema(
-            ["job_id", "amount_cents"],
+            ["amount_cents"],
             {
-                "job_id": {"type": "string", "format": "uuid"},
+                "job_id": {"type": ["string", "null"], "format": "uuid"},
+                "job_title": {"type": ["string", "null"]},
                 "currency": {"type": "string"},
                 "description": {"type": "string"},
                 "amount_cents": {"type": "integer", "minimum": 0},
@@ -218,6 +267,83 @@ def validate_arguments(definition: ToolDefinition, arguments: dict[str, Any]) ->
 
 def words(value: str) -> set[str]:
     return {word for word in re.findall(r"[a-z0-9]+", value.lower()) if len(word) > 2}
+
+
+async def resolve_customer(session: AsyncSession, tenant_id: str, arguments: dict[str, Any]) -> Customer:
+    if arguments.get("customer_id"):
+        customer = await session.scalar(
+            select(Customer).where(Customer.id == arguments["customer_id"], Customer.tenant_id == tenant_id)
+        )
+        if customer is None:
+            raise ToolInputError("Customer not found")
+        return customer
+    name = str(arguments.get("customer_name") or "").strip()
+    if not name:
+        raise ToolInputError("Provide customer_id or customer_name")
+    matches = list(
+        await session.scalars(
+            select(Customer).where(Customer.tenant_id == tenant_id, Customer.name.ilike(name)).limit(2)
+        )
+    )
+    if not matches:
+        raise ToolInputError(f'No customer named "{name}" was found')
+    if len(matches) > 1:
+        raise ToolInputError(f'More than one customer is named "{name}"; use the customer ID')
+    return matches[0]
+
+
+async def resolve_job(session: AsyncSession, tenant_id: str, arguments: dict[str, Any]) -> Job:
+    if arguments.get("job_id"):
+        job = await session.scalar(select(Job).where(Job.id == arguments["job_id"], Job.tenant_id == tenant_id))
+        if job is None:
+            raise ToolInputError("Job not found")
+        return job
+    title = str(arguments.get("job_title") or "").strip()
+    if not title:
+        raise ToolInputError("Provide job_id or job_title")
+    matches = list(
+        await session.scalars(select(Job).where(Job.tenant_id == tenant_id, Job.title.ilike(title)).limit(2))
+    )
+    if not matches:
+        raise ToolInputError(f'No job titled "{title}" was found')
+    if len(matches) > 1:
+        raise ToolInputError(f'More than one job is titled "{title}"; use the job ID')
+    return matches[0]
+
+
+async def resolve_technician_reference(
+    session: AsyncSession, tenant_id: str, arguments: dict[str, Any]
+) -> Technician | None:
+    if arguments.get("technician_id"):
+        technician = await session.scalar(
+            select(Technician).where(
+                Technician.id == arguments["technician_id"],
+                Technician.tenant_id == tenant_id,
+                Technician.is_active.is_(True),
+            )
+        )
+        if technician is None:
+            raise ToolInputError("Active technician not found")
+        return technician
+    name = str(arguments.get("technician_name") or "").strip()
+    if not name:
+        return None
+    matches = list(
+        await session.scalars(
+            select(Technician)
+            .where(
+                Technician.tenant_id == tenant_id,
+                Technician.name.ilike(name),
+                Technician.is_active.is_(True),
+            )
+            .limit(2)
+        )
+    )
+    if not matches:
+        raise ToolInputError(f'No active technician named "{name}" was found')
+    if len(matches) > 1:
+        raise ToolInputError(f'More than one technician is named "{name}"; use the technician ID')
+    return matches[0]
 
 
 async def search_knowledge(
@@ -387,11 +513,60 @@ async def execute_tool(
             "citations": citations,
         }
 
+    if name == "create_customer":
+        required(arguments, "name")
+        try:
+            payload = CustomerCreate(
+                name=arguments["name"],
+                email=arguments.get("email"),
+                phone=arguments.get("phone"),
+                notes=arguments.get("notes"),
+            )
+        except ValueError as exc:
+            raise ToolInputError(str(exc)) from None
+        customer = await create_customer_record(
+            payload=payload,
+            request=request,
+            context=context,
+            session=session,
+        )
+        return {
+            "summary": f"Added customer “{customer.name}”.",
+            "data": {"customer": CustomerRead.model_validate(customer).model_dump(mode="json")},
+            "links": [{"label": customer.name, "resource": "customer", "id": customer.id}],
+            "citations": [],
+        }
+
+    if name == "create_technician":
+        required(arguments, "name", "email")
+        try:
+            payload = TechnicianCreate(
+                name=arguments["name"],
+                email=arguments["email"],
+                phone=arguments.get("phone"),
+                timezone=arguments.get("timezone") or "UTC",
+            )
+        except ValueError as exc:
+            raise ToolInputError(str(exc)) from None
+        technician = await create_technician_record(
+            payload=payload,
+            request=request,
+            context=context,
+            session=session,
+        )
+        return {
+            "summary": f"Added technician “{technician.name}” to the team.",
+            "data": {"technician": TechnicianRead.model_validate(technician).model_dump(mode="json")},
+            "links": [{"label": technician.name, "resource": "technician", "id": technician.id}],
+            "citations": [],
+        }
+
     if name == "draft_job":
-        required(arguments, "customer_id", "title")
+        required(arguments, "title")
+        customer = await resolve_customer(session, context.tenant_id, arguments)
         job = await create_job(
             JobCreate(
-                customer_id=arguments["customer_id"],
+                customer_id=customer.id,
                 title=arguments["title"],
                 description=arguments.get("description"),
             ),
@@ -418,17 +593,16 @@ async def execute_tool(
         }
 
     if name == "propose_schedule":
-        required(arguments, "job_id", "starts_at", "ends_at")
-        job = await session.scalar(select(Job).where(Job.id == arguments["job_id"], Job.tenant_id == context.tenant_id))
-        if job is None:
-            raise HTTPException(status_code=404, detail="Job not found")
+        required(arguments, "starts_at", "ends_at")
+        job = await resolve_job(session, context.tenant_id, arguments)
+        technician = await resolve_technician_reference(session, context.tenant_id, arguments)
         appointment = await schedule_job(
             job.id,
             ScheduleJob(
                 starts_at=arguments["starts_at"],
                 ends_at=arguments["ends_at"],
                 timezone=arguments.get("timezone") or "UTC",
-                technician_id=arguments.get("technician_id"),
+                technician_id=technician.id if technician else None,
                 expected_version=job.version,
             ),
             request,
@@ -444,10 +618,8 @@ async def execute_tool(
         }
 
     if name == "draft_invoice":
-        required(arguments, "job_id", "amount_cents")
-        job = await session.scalar(select(Job).where(Job.id == arguments["job_id"], Job.tenant_id == context.tenant_id))
-        if job is None:
-            raise HTTPException(status_code=404, detail="Job not found")
+        required(arguments, "amount_cents")
+        job = await resolve_job(session, context.tenant_id, arguments)
         invoice = await draft_invoice(
             job.id,
             DraftInvoice(

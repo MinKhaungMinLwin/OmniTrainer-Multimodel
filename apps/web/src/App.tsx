@@ -3102,6 +3102,14 @@ function AssistantPage({
         reason: reason || null,
       });
       await streamRun(detail, after);
+      if (decision !== "reject") {
+        await Promise.all(
+          ["customers", "jobs", "appointments", "invoices", "technicians"].map(
+            (resource) =>
+              cache.invalidateQueries({ queryKey: [resource, tenantId] }),
+          ),
+        );
+      }
       return detail;
     },
   });
@@ -3435,8 +3443,9 @@ function AssistantPage({
                   <span>✦</span>
                   <h2>What should we work on?</h2>
                   <p>
-                    Try “Find customer Northwind”, “What is our cancellation
-                    policy?”, or propose a job change.
+                    Try “Add James X to our customer list”, “Create a job for
+                    James X”, “Schedule an appointment”, or “Draft an invoice”.
+                    Every change waits for your approval.
                   </p>
                 </div>
               )}

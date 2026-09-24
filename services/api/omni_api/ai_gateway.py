@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal, Protocol
 
 from google import genai
@@ -35,6 +36,8 @@ ToolName = Literal[
     "check_availability",
     "retrieve_invoice",
     "search_knowledge",
+    "create_customer",
+    "create_technician",
     "draft_job",
     "add_job_note",
     "propose_schedule",
@@ -67,12 +70,21 @@ Return a concise, helpful response and zero or more tool calls. Put each tool's 
 - check_availability: {query: string}
 - retrieve_invoice: {invoice_id: UUID}
 - search_knowledge: {query: string}
-- draft_job: {customer_id: UUID, title: string, description: string}
+- create_customer: {name: string, email: string|null, phone: string|null, notes: string|null}
+- create_technician: {name: string, email: string, phone: string|null, timezone: string}
+- draft_job: {customer_id: UUID|null, customer_name: string|null, title: string, description: string|null}
 - add_job_note: {job_id: UUID, body: string}
-- propose_schedule: {job_id: UUID, starts_at: ISO timestamp, ends_at: ISO timestamp, timezone: string, technician_id: UUID|null}
-- draft_invoice: {job_id: UUID, currency: string, description: string, amount_cents: integer}
+- propose_schedule: {job_id: UUID|null, job_title: string|null, starts_at: ISO timestamp, ends_at: ISO timestamp, timezone: string, technician_id: UUID|null, technician_name: string|null}
+- draft_invoice: {job_id: UUID|null, job_title: string|null, currency: string, description: string, amount_cents: integer}
 - send_message: {recipient: string, body: string}
 Never call a write tool unless the user explicitly requests that action. Writes are proposals and require human review.
+When you propose a write tool, describe it as awaiting review; never tell the user the record was already created, changed, or scheduled.
+Use create_customer when the user asks to add or create a customer. A customer name is sufficient; preserve optional contact details when supplied.
+Use create_technician when the user asks to add a technician or team member. A valid email is required; if it is missing, ask for it and do not call a tool.
+For jobs, schedules, and invoices, use a record UUID when the user supplies one; otherwise use the exact customer, job, or technician name in the corresponding *_name field.
+For propose_schedule, job_id or job_title identifies the job. Do not ask for a customer when either is present.
+Do not invent required business details. If a job title, appointment time range, technician email, or invoice amount is missing, ask a concise follow-up question and return no tool call.
+The input may contain labeled conversation history. Use it only to resolve the latest USER request and missing follow-up details. Do not repeat a write that earlier context says was completed.
 Use search_knowledge for questions about company policy or procedure. Do not use a tool for ordinary conversation.
 """
 
@@ -133,37 +145,92 @@ class LocalCopilotProvider:
         tools: list[ToolPlan] = []
         intro = "I’ll check the workspace and return a traceable result."
 
-        if "add note" in lower:
+        if ("add" in lower or "create" in lower) and "customer" in lower and "job" not in lower:
+            name = quoted_value(safe_prompt)
+            if name is None:
+                match = re.search(
+                    r"(?:add|create)\s+(?:the\s+)?(.+?)\s+(?:to|in)\s+(?:our\s+|the\s+)?customer",
+                    safe_prompt,
+                    re.IGNORECASE,
+                )
+                name = match.group(1).strip() if match else None
+            email = re.search(r"(?:[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|\[EMAIL_\d+\])", safe_prompt)
+            phone = re.search(r"\[PHONE_\d+\]", safe_prompt)
+            tools.append(
+                ToolPlan(
+                    "create_customer",
+                    {
+                        "name": name,
+                        "email": email.group(0) if email else None,
+                        "phone": phone.group(0) if phone else None,
+                        "notes": None,
+                    },
+                )
+            )
+        elif ("add" in lower or "create" in lower) and ("technician" in lower or "team member" in lower):
+            email = re.search(r"(?:[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|\[EMAIL_\d+\])", safe_prompt)
+            name = quoted_value(safe_prompt)
+            tools.append(
+                ToolPlan(
+                    "create_technician",
+                    {
+                        "name": name,
+                        "email": email.group(0) if email else None,
+                        "phone": None,
+                        "timezone": "UTC",
+                    },
+                )
+            )
+        elif "add note" in lower:
             job_id = identifier_after(safe_prompt, "job")
             body = quoted_value(safe_prompt)
             tools.append(ToolPlan("add_job_note", {"job_id": job_id, "body": body}))
         elif "create job" in lower or "draft job" in lower:
             customer_id = identifier_after(safe_prompt, "customer")
+            customer_name_match = re.search(r"\bfor customer\s+(.+?)$", safe_prompt, re.IGNORECASE)
             title = quoted_value(safe_prompt) or "AI-proposed job"
             tools.append(
                 ToolPlan(
                     "draft_job",
-                    {"customer_id": customer_id, "title": title, "description": "Proposed by Omni Copilot"},
+                    {
+                        "customer_id": customer_id,
+                        "customer_name": (
+                            None
+                            if customer_id or customer_name_match is None
+                            else customer_name_match.group(1).strip(" .")
+                        ),
+                        "title": title,
+                        "description": "Proposed by Omni Copilot",
+                    },
                 )
             )
-        elif "schedule job" in lower or "propose schedule" in lower:
+        elif "schedule job" in lower or "schedule appointment" in lower or "propose schedule" in lower:
             job_id = identifier_after(safe_prompt, "job")
             timestamps = re.findall(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})", safe_prompt)
             technician_id = identifier_after(safe_prompt, "technician")
+            job_title = quoted_value(safe_prompt) if not job_id else None
+            technician_name_match = re.search(r'technician\s+["“](.+?)["”]', safe_prompt, re.IGNORECASE)
             tools.append(
                 ToolPlan(
                     "propose_schedule",
                     {
                         "job_id": job_id,
+                        "job_title": job_title,
                         "starts_at": timestamps[0] if timestamps else None,
                         "ends_at": timestamps[1] if len(timestamps) > 1 else None,
                         "timezone": "UTC",
                         "technician_id": technician_id,
+                        "technician_name": (
+                            technician_name_match.group(1).strip()
+                            if technician_name_match and not technician_id
+                            else None
+                        ),
                     },
                 )
             )
         elif "draft invoice" in lower:
             job_id = identifier_after(safe_prompt, "job")
+            job_title = quoted_value(safe_prompt) if not job_id else None
             amount_match = re.search(r"(?:amount|for)\s+\$?([\d,.]+)", safe_prompt, re.IGNORECASE)
             amount_cents = int(float(amount_match.group(1).replace(",", "")) * 100) if amount_match else 0
             tools.append(
@@ -171,6 +238,7 @@ class LocalCopilotProvider:
                     "draft_invoice",
                     {
                         "job_id": job_id,
+                        "job_title": job_title,
                         "currency": "USD",
                         "description": "Service",
                         "amount_cents": amount_cents,
@@ -216,9 +284,10 @@ class GeminiCopilotProvider:
         self.model = model
 
     def plan(self, prompt: str) -> GatewayPlan:
+        today = datetime.now().astimezone().date().isoformat()
         response = self.client.models.generate_content(
             model=self.model,
-            contents=prompt,
+            contents=f"Current date: {today}\n{prompt}",
             config=types.GenerateContentConfig(
                 system_instruction=GEMINI_COPILOT_INSTRUCTION,
                 response_mime_type="application/json",

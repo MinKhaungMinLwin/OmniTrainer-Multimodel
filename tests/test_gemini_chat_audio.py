@@ -30,6 +30,30 @@ def test_gemini_provider_returns_only_typed_allowlisted_tools():
     assert result.tools[0].arguments == {"query": "Northwind"}
 
 
+def test_gemini_provider_accepts_reviewed_customer_creation_tool():
+    provider = GeminiCopilotProvider("test-key", "gemini-test")
+    provider.client = SimpleNamespace(
+        models=SimpleNamespace(
+            generate_content=lambda **_: SimpleNamespace(
+                parsed=GeminiPlan(
+                    response="I’ll prepare James X for review.",
+                    tools=[
+                        GeminiToolPlan(
+                            name="create_customer",
+                            arguments_json='{"name":"James X","email":null,"phone":null,"notes":null}',
+                        )
+                    ],
+                ),
+                text="",
+                usage_metadata=SimpleNamespace(prompt_token_count=14),
+            )
+        )
+    )
+    result = provider.plan("Add James X to our customer list")
+    assert result.tools[0].name == "create_customer"
+    assert result.tools[0].arguments["name"] == "James X"
+
+
 def test_pcm_is_wrapped_as_browser_playable_wav():
     audio = pcm_to_wav(b"\x00\x00" * 240)
     assert audio.startswith(b"RIFF")

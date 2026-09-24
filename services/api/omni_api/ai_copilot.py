@@ -275,9 +275,23 @@ async def process_new_run(
             "toolset_version": run.toolset_version,
         },
     )
+    provider_prompt = prompt
+    if run.provider == "gemini":
+        recent_messages = list(
+            await session.scalars(
+                select(ConversationMessage)
+                .where(ConversationMessage.conversation_id == run.conversation_id)
+                .order_by(ConversationMessage.created_at.desc())
+                .limit(12)
+            )
+        )
+        recent_messages.reverse()
+        provider_prompt = "Conversation history:\n" + "\n".join(
+            f"{message.role.upper()}: {message.content}" for message in recent_messages
+        )
     plan = await plan_with_resilience(
         run.provider,
-        prompt,
+        provider_prompt,
         timeout_seconds=request.app.state.settings.ai_timeout_seconds,
         api_key=request.app.state.settings.gemini_api_key,
         model=request.app.state.settings.ai_model,
