@@ -51,3 +51,25 @@ def test_tracing_hides_model_content_by_default(monkeypatch):
     assert config.hide_outputs is True
     assert config.hide_input_images is True
     observability.shutdown_tracing(provider)
+
+
+def test_tracing_stays_available_when_provider_instrumentation_fails(monkeypatch):
+    provider = SimpleNamespace(force_flush=lambda **_: None, shutdown=lambda: None)
+    monkeypatch.setattr(observability, "register", lambda **_: provider)
+    monkeypatch.setattr(
+        observability.GoogleGenAIInstrumentor,
+        "instrument",
+        lambda _self, **_: (_ for _ in ()).throw(RuntimeError("unsupported SDK")),
+    )
+    monkeypatch.setattr(observability, "_provider", None)
+    settings = SimpleNamespace(
+        tracing_enabled=True,
+        tracing_endpoint="http://phoenix:6006/v1/traces",
+        tracing_project_name="omni-test",
+        tracing_api_key="trace-secret",
+        tracing_sample_ratio=1.0,
+        tracing_capture_content=False,
+        environment="test",
+    )
+    assert observability.configure_tracing(settings, "omni-test") is provider
+    observability.shutdown_tracing(provider)

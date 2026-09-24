@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -13,6 +14,7 @@ from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 from phoenix.otel import register
 
 _provider: TracerProvider | None = None
+logger = logging.getLogger(__name__)
 
 
 def hash_identifier(value: str | None) -> str:
@@ -44,20 +46,25 @@ def configure_tracing(settings: Any, service_name: str) -> TracerProvider | None
         sampler=ParentBased(TraceIdRatioBased(settings.tracing_sample_ratio)),
     )
     hide_content = not settings.tracing_capture_content
-    GoogleGenAIInstrumentor().instrument(
-        tracer_provider=_provider,
-        config=TraceConfig(
-            hide_inputs=hide_content,
-            hide_outputs=hide_content,
-            hide_input_messages=hide_content,
-            hide_output_messages=hide_content,
-            hide_input_text=hide_content,
-            hide_output_text=hide_content,
-            hide_input_images=True,
-            hide_prompts=hide_content,
-            hide_choices=hide_content,
-        ),
-    )
+    try:
+        GoogleGenAIInstrumentor().instrument(
+            tracer_provider=_provider,
+            config=TraceConfig(
+                hide_inputs=hide_content,
+                hide_outputs=hide_content,
+                hide_input_messages=hide_content,
+                hide_output_messages=hide_content,
+                hide_input_text=hide_content,
+                hide_output_text=hide_content,
+                hide_input_images=True,
+                hide_prompts=hide_content,
+                hide_choices=hide_content,
+            ),
+        )
+    except Exception:
+        # Provider instrumentation is optional. Manual Omni spans must continue to
+        # work even when a google-genai/OpenInference version pair is incompatible.
+        logger.warning("Google GenAI auto-instrumentation is unavailable", exc_info=True)
     return _provider
 
 
