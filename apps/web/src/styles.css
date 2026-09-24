@@ -590,6 +590,11 @@ article > span {
   font-weight: 700;
   text-transform: capitalize;
 }
+.run-meter a {
+  color: #176b4d;
+  font-size: 12px;
+  font-weight: 700;
+}
 .message-thread {
   min-height: 0;
   width: min(820px, 100%);

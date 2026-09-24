@@ -164,6 +164,10 @@ The legacy moderation proof of concept remains available through `uv run multimo
 - FastAPI documentation: <http://localhost:8000/docs>
 - Phoenix traces: <http://localhost:6006/projects>
 
+The current Omni API and voice services export privacy-filtered OpenTelemetry/OpenInference traces to the Phoenix
+service in the platform Compose profile. See [the Phoenix tracing runbook](docs/runbooks/phoenix-tracing.md) for
+deployment, security, trace structure, and troubleshooting.
+
 ## Tests
 
 The default suite is deterministic and does not make model-provider requests:

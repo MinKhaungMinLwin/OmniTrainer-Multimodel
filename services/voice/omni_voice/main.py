@@ -15,6 +15,7 @@ from services.api.omni_api.config import Settings
 from services.api.omni_api.database import build_engine, build_session_factory
 from services.api.omni_api.models import CallRawPayload, VoiceCall, VoiceFlowConfig
 from services.api.omni_api.storage import AttachmentStorage
+from services.observability import configure_tracing, shutdown_tracing
 from services.voice.omni_voice.providers import GenericTelephonyAdapter, LocalStreamingSTT, normalize_audio
 from services.voice.omni_voice.reliability import (
     AsyncBoundedMediaBuffer,
@@ -86,9 +87,13 @@ def create_voice_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        tracing_provider = configure_tracing(app_settings, "omni-voice")
         app.state.session_factory = session_factory
-        yield
-        await engine.dispose()
+        try:
+            yield
+        finally:
+            await engine.dispose()
+            shutdown_tracing(tracing_provider)
 
     app = FastAPI(title="Omni Voice Media Gateway", version="0.1.0", lifespan=lifespan)
     app.state.settings = app_settings

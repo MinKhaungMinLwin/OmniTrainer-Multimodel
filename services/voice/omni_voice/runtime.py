@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from openinference.semconv.trace import OpenInferenceSpanKindValues
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from services.api.omni_api.models import (
     VoiceTranscriptSegment,
 )
 from services.api.omni_api.storage import AttachmentStorage
+from services.observability import hash_identifier, traced_span
 from services.voice.omni_voice.providers import LocalRealtimeModel, LocalStreamingTTS
 
 _LOCAL_MODEL = LocalRealtimeModel()
@@ -352,6 +354,40 @@ async def request_transfer(
 
 
 async def handle_user_turn(
+    session: AsyncSession,
+    call: VoiceCall,
+    text: str,
+    *,
+    start_ms: int,
+    end_ms: int,
+    confidence_bps: int = 9900,
+) -> VoiceOutput:
+    with traced_span(
+        "voice.turn",
+        OpenInferenceSpanKindValues.AGENT,
+        session_id=call.id,
+        metadata={"tenant_hash": hash_identifier(call.tenant_id), "call_id": call.id},
+        attributes={
+            "voice.input_characters": len(text),
+            "voice.input_duration_ms": max(0, end_ms - start_ms),
+            "voice.confidence_bps": confidence_bps,
+            "voice.phase": str(call.state.get("phase", "awaiting_consent")),
+        },
+    ) as span:
+        output = await _handle_user_turn(
+            session,
+            call,
+            text,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            confidence_bps=confidence_bps,
+        )
+        span.set_attribute("voice.output_type", output.event_type)
+        span.set_attribute("voice.output_characters", len(output.text or ""))
+        return output
+
+
+async def _handle_user_turn(
     session: AsyncSession,
     call: VoiceCall,
     text: str,

@@ -21,6 +21,13 @@ x-platform-environment: &platform-environment
   OMNI_AI_MODEL: ${OMNI_AI_MODEL:-gemini-3.5-flash-lite}
   OMNI_AI_RUNS_PER_MINUTE: ${OMNI_AI_RUNS_PER_MINUTE:-30}
   OMNI_AI_TIMEOUT_SECONDS: ${OMNI_AI_TIMEOUT_SECONDS:-30}
+  OMNI_TRACING_ENABLED: ${OMNI_TRACING_ENABLED:-true}
+  OMNI_TRACING_ENDPOINT: http://phoenix:6006/v1/traces
+  OMNI_TRACING_PUBLIC_URL: https://${TRACES_DOMAIN:?Set TRACES_DOMAIN}
+  OMNI_TRACING_API_KEY: ${PHOENIX_ADMIN_SECRET:?Set PHOENIX_ADMIN_SECRET}
+  OMNI_TRACING_PROJECT_NAME: ${OMNI_TRACING_PROJECT_NAME:-omni-staging}
+  OMNI_TRACING_SAMPLE_RATIO: ${OMNI_TRACING_SAMPLE_RATIO:-1.0}
+  OMNI_TRACING_CAPTURE_CONTENT: ${OMNI_TRACING_CAPTURE_CONTENT:-false}
   OMNI_GEMINI_STT_MODEL: ${OMNI_GEMINI_STT_MODEL:-gemini-3.5-flash-lite}
   OMNI_GEMINI_TTS_MODEL: ${OMNI_GEMINI_TTS_MODEL:-gemini-2.5-flash-preview-tts}
   OMNI_GEMINI_TTS_VOICE: ${OMNI_GEMINI_TTS_VOICE:-Kore}
@@ -88,6 +95,49 @@ services:
       retries: 20
     restart: unless-stopped
     mem_limit: 384m
+    logging: *default-logging
+
+  phoenix-volume-init:
+    image: alpine:3.22
+    command: ["chown", "-R", "65532:65532", "/phoenix-data"]
+    volumes:
+      - staging-phoenix:/phoenix-data
+    restart: "no"
+    logging: *default-logging
+
+  phoenix:
+    image: arizephoenix/phoenix:version-20.15.0-nonroot
+    environment:
+      PHOENIX_ENABLE_AUTH: "true"
+      PHOENIX_SECRET: ${PHOENIX_SECRET:?Set PHOENIX_SECRET}
+      PHOENIX_ADMIN_SECRET: ${PHOENIX_ADMIN_SECRET:?Set PHOENIX_ADMIN_SECRET}
+      PHOENIX_DEFAULT_ADMIN_INITIAL_PASSWORD: ${PHOENIX_DEFAULT_ADMIN_INITIAL_PASSWORD:?Set PHOENIX_DEFAULT_ADMIN_INITIAL_PASSWORD}
+      PHOENIX_USE_SECURE_COOKIES: "true"
+      PHOENIX_ROOT_URL: https://${TRACES_DOMAIN:?Set TRACES_DOMAIN}
+      PHOENIX_DISABLE_AGENT_ASSISTANT: "true"
+      PHOENIX_AGENTS_DISABLE_BASH: "true"
+      PHOENIX_AGENTS_DISABLE_GITHUB: "true"
+      PHOENIX_ENABLE_MCP_SERVER: "false"
+      PHOENIX_ENABLE_MCP_CODE_MODE: "false"
+      PHOENIX_TELEMETRY_ENABLED: "false"
+    volumes:
+      - staging-phoenix:/home/nonroot/.phoenix
+    depends_on:
+      phoenix-volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:6006/healthz', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+    restart: unless-stopped
+    mem_limit: 640m
     logging: *default-logging
 
   migrate:
@@ -205,6 +255,7 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
       API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN}
       VOICE_DOMAIN: ${VOICE_DOMAIN:?Set VOICE_DOMAIN}
+      TRACES_DOMAIN: ${TRACES_DOMAIN:?Set TRACES_DOMAIN}
     ports:
       - "80:80"
       - "443:443"
@@ -217,6 +268,8 @@ services:
         condition: service_healthy
       voice:
         condition: service_healthy
+      phoenix:
+        condition: service_healthy
     restart: unless-stopped
     mem_limit: 128m
     logging: *default-logging
@@ -225,5 +278,6 @@ volumes:
   staging-postgres:
   staging-redis:
   staging-minio:
+  staging-phoenix:
   staging-caddy-data:
   staging-caddy-config:

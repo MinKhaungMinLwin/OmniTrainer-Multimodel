@@ -6,6 +6,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, Request
+from openinference.semconv.trace import OpenInferenceSpanKindValues
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -39,6 +40,7 @@ from services.api.omni_api.schemas import (
     TechnicianCreate,
     TechnicianRead,
 )
+from services.observability import hash_identifier, traced_span
 
 
 class ToolInputError(ValueError):
@@ -367,6 +369,20 @@ async def resolve_technician_reference(
 
 
 async def search_knowledge(
+    session: AsyncSession, tenant_id: str, role: str, query: str, limit: int = 5
+) -> list[dict[str, Any]]:
+    with traced_span(
+        "knowledge.search",
+        OpenInferenceSpanKindValues.RETRIEVER,
+        metadata={"tenant_hash": hash_identifier(tenant_id)},
+        attributes={"retrieval.limit": limit, "retrieval.query_word_count": len(words(query))},
+    ) as span:
+        results = await _search_knowledge(session, tenant_id, role, query, limit)
+        span.set_attribute("retrieval.result_count", len(results))
+        return results
+
+
+async def _search_knowledge(
     session: AsyncSession, tenant_id: str, role: str, query: str, limit: int = 5
 ) -> list[dict[str, Any]]:
     query_words = words(query)

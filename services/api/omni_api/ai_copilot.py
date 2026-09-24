@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
+from openinference.semconv.trace import OpenInferenceSpanKindValues
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -62,6 +63,7 @@ from services.api.omni_api.models import (
     ToolInvocation,
 )
 from services.api.omni_api.operations import record_change
+from services.observability import current_trace_id, hash_identifier, tool_argument_summary, traced_span
 
 router = APIRouter(prefix="/ai", tags=["ai-copilot"])
 
@@ -222,17 +224,31 @@ async def execute_read_plan(
         {"tool_invocation_id": tool.id, "name": tool.name},
     )
     try:
-        result = await asyncio.wait_for(
-            execute_tool(
-                tool.name,
-                tool.input,
-                session=session,
-                context=context,
-                request=request,
-                idempotency_key=tool.idempotency_key,
-            ),
-            timeout=TOOL_REGISTRY[tool.name].timeout_seconds,
-        )
+        with traced_span(
+            f"tool.{tool.name}",
+            OpenInferenceSpanKindValues.TOOL,
+            session_id=run.conversation_id,
+            user_id=context.user.id,
+            metadata={"tenant_hash": hash_identifier(context.tenant_id), "run_id": run.id},
+            attributes={
+                "tool.name": tool.name,
+                "tool.risk": tool.risk,
+                "tool.input.summary": tool_argument_summary(tool.input),
+                "omni.human_reviewed": tool.risk != "read",
+            },
+        ) as span:
+            result = await asyncio.wait_for(
+                execute_tool(
+                    tool.name,
+                    tool.input,
+                    session=session,
+                    context=context,
+                    request=request,
+                    idempotency_key=tool.idempotency_key,
+                ),
+                timeout=TOOL_REGISTRY[tool.name].timeout_seconds,
+            )
+            span.set_attribute("tool.result.status", "completed")
     except (HTTPException, ToolInputError, TimeoutError) as exc:
         detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
         tool.status = "failed"
@@ -264,7 +280,39 @@ async def process_new_run(
     context: TenantContext,
     request: Request,
 ) -> None:
+    with traced_span(
+        "copilot.agent.run",
+        OpenInferenceSpanKindValues.AGENT,
+        session_id=run.conversation_id,
+        user_id=context.user.id,
+        metadata={
+            "tenant_hash": hash_identifier(context.tenant_id),
+            "run_id": run.id,
+            "correlation_id": request.state.correlation_id,
+        },
+        attributes={
+            "agent.provider": run.provider,
+            "agent.model": run.model,
+            "agent.prompt_version": run.prompt_version,
+            "agent.toolset_version": run.toolset_version,
+        },
+    ) as span:
+        await _process_new_run(session, run, prompt, context, request)
+        span.set_attribute("agent.status", run.status)
+        span.set_attribute("agent.input_tokens", run.input_tokens)
+        span.set_attribute("agent.output_tokens", run.output_tokens)
+        span.set_attribute("agent.cost_micros", run.cost_micros)
+
+
+async def _process_new_run(
+    session: AsyncSession,
+    run: AgentRun,
+    prompt: str,
+    context: TenantContext,
+    request: Request,
+) -> None:
     run.status = "running"
+    trace_id = current_trace_id()
     await append_event(
         session,
         run,
@@ -274,6 +322,8 @@ async def process_new_run(
             "model": run.model,
             "prompt_version": run.prompt_version,
             "toolset_version": run.toolset_version,
+            "trace_id": trace_id,
+            "trace_url": request.app.state.settings.tracing_public_url if trace_id else None,
         },
     )
     provider_prompt = prompt
@@ -675,6 +725,19 @@ async def decide_approval(
         approval.decided_args = approval.proposed_args
         tool.status = "rejected"
         run.status = "running"
+        with traced_span(
+            "copilot.approval.decision",
+            OpenInferenceSpanKindValues.CHAIN,
+            session_id=run.conversation_id,
+            user_id=context.user.id,
+            metadata={"tenant_hash": hash_identifier(context.tenant_id), "run_id": run.id},
+            attributes={
+                "approval.decision": "reject",
+                "approval.tool_name": tool.name,
+                "approval.edited": False,
+            },
+        ):
+            pass
         await append_event(
             session,
             run,
@@ -699,7 +762,20 @@ async def decide_approval(
         approval.decided_args = arguments
         tool.input = arguments
         run.status = "running"
-        result = await execute_read_plan(session, run, tool, context, request)
+        with traced_span(
+            "copilot.approval.decision",
+            OpenInferenceSpanKindValues.CHAIN,
+            session_id=run.conversation_id,
+            user_id=context.user.id,
+            metadata={"tenant_hash": hash_identifier(context.tenant_id), "run_id": run.id},
+            attributes={
+                "approval.decision": payload.decision,
+                "approval.tool_name": tool.name,
+                "approval.edited": payload.decision == "edit",
+            },
+        ) as approval_span:
+            result = await execute_read_plan(session, run, tool, context, request)
+            approval_span.set_attribute("approval.execution_status", tool.status)
         if result is None:
             run.status = "failed"
             run.error_code = "tool_error"

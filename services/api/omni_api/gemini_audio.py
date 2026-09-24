@@ -5,8 +5,10 @@ from dataclasses import dataclass
 
 from google import genai
 from google.genai import types
+from openinference.semconv.trace import OpenInferenceSpanKindValues
 
 from services.api.omni_api.config import Settings
+from services.observability import traced_span
 
 SUPPORTED_AUDIO_TYPES = {
     "audio/aac",
@@ -61,6 +63,20 @@ class GeminiAudioService:
         self.settings = settings
 
     async def transcribe(self, audio: bytes, mime_type: str) -> Transcription:
+        with traced_span(
+            "audio.transcribe",
+            OpenInferenceSpanKindValues.CHAIN,
+            attributes={
+                "audio.input_bytes": len(audio),
+                "audio.mime_type": mime_type,
+                "audio.model": self.settings.gemini_stt_model,
+            },
+        ) as span:
+            result = await self._transcribe(audio, mime_type)
+            span.set_attribute("audio.transcript_characters", len(result.text))
+            return result
+
+    async def _transcribe(self, audio: bytes, mime_type: str) -> Transcription:
         client = gemini_client(self.settings)
 
         def request():
@@ -86,8 +102,22 @@ class GeminiAudioService:
         return Transcription(text=text, model=self.settings.gemini_stt_model)
 
     async def synthesize(self, text: str, voice: str | None = None) -> bytes:
-        client = gemini_client(self.settings)
         selected_voice = voice or self.settings.gemini_tts_voice
+        with traced_span(
+            "audio.synthesize",
+            OpenInferenceSpanKindValues.CHAIN,
+            attributes={
+                "audio.input_characters": len(text),
+                "audio.voice": selected_voice,
+                "audio.model": self.settings.gemini_tts_model,
+            },
+        ) as span:
+            audio = await self._synthesize(text, selected_voice)
+            span.set_attribute("audio.output_bytes", len(audio))
+            return audio
+
+    async def _synthesize(self, text: str, selected_voice: str) -> bytes:
+        client = gemini_client(self.settings)
 
         def request():
             return client.models.generate_content(

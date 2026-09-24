@@ -77,6 +77,12 @@ services:
       OMNI_AI_MODEL: ${OMNI_AI_MODEL:-omni-copilot-local-v1}
       OMNI_AI_RUNS_PER_MINUTE: "30"
       OMNI_AI_TIMEOUT_SECONDS: "15"
+      OMNI_TRACING_ENABLED: "true"
+      OMNI_TRACING_ENDPOINT: http://phoenix:6006/v1/traces
+      OMNI_TRACING_PUBLIC_URL: http://localhost:6006
+      OMNI_TRACING_API_KEY: local-phoenix-admin-secret-1234567890
+      OMNI_TRACING_PROJECT_NAME: omni-development
+      OMNI_TRACING_CAPTURE_CONTENT: "false"
       OMNI_VOICE_WEBHOOK_SECRET: local-voice-webhook-secret-change-me
       OMNI_VOICE_MEDIA_SECRET: local-voice-media-secret-change-me
       OMNI_VOICE_PUBLIC_BASE_URL: http://localhost:8002
@@ -120,6 +126,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      phoenix:
         condition: service_healthy
     healthcheck:
       test:
@@ -173,6 +181,8 @@ services:
     ports:
       - "8002:8002"
     depends_on:
+      phoenix:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
       redis:
@@ -196,6 +206,50 @@ services:
       resources:
         limits: {cpus: "2", memory: 2G}
         reservations: {cpus: "0.5", memory: 512M}
+
+  phoenix-volume-init:
+    profiles: ["platform"]
+    image: alpine:3.22
+    command: ["chown", "-R", "65532:65532", "/phoenix-data"]
+    volumes:
+      - omni-phoenix:/phoenix-data
+    restart: "no"
+
+  phoenix:
+    profiles: ["platform"]
+    image: arizephoenix/phoenix:version-20.15.0-nonroot
+    environment:
+      PHOENIX_ENABLE_AUTH: "true"
+      PHOENIX_SECRET: local-phoenix-session-secret-1234567890
+      PHOENIX_ADMIN_SECRET: local-phoenix-admin-secret-1234567890
+      PHOENIX_DEFAULT_ADMIN_INITIAL_PASSWORD: local-phoenix-password-1234
+      PHOENIX_DISABLE_AGENT_ASSISTANT: "true"
+      PHOENIX_AGENTS_DISABLE_BASH: "true"
+      PHOENIX_AGENTS_DISABLE_GITHUB: "true"
+      PHOENIX_ENABLE_MCP_SERVER: "false"
+      PHOENIX_ENABLE_MCP_CODE_MODE: "false"
+      PHOENIX_TELEMETRY_ENABLED: "false"
+    ports: ["6006:6006"]
+    volumes:
+      - omni-phoenix:/home/nonroot/.phoenix
+    depends_on:
+      phoenix-volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:6006/healthz', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {cpus: "1", memory: 1G}
 
   prometheus:
     profiles: ["monitoring"]
@@ -226,3 +280,4 @@ volumes:
   omni-minio:
   omni-prometheus:
   omni-grafana:
+  omni-phoenix:

@@ -21,6 +21,7 @@ from services.api.omni_api.operations_mvp import router as operations_mvp_router
 from services.api.omni_api.schemas import DevTokenRequest, TenantRead, TokenResponse, UserRead
 from services.api.omni_api.seed import seed_development_data
 from services.api.omni_api.voice import router as voice_router
+from services.observability import configure_tracing, shutdown_tracing
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -30,13 +31,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        tracing_provider = configure_tracing(app_settings, "omni-api")
         if app_settings.auto_create_schema:
             async with engine.begin() as connection:
                 await connection.run_sync(Base.metadata.create_all)
         if app_settings.allow_dev_auth and app_settings.auto_create_schema:
             await seed_development_data(session_factory)
-        yield
-        await engine.dispose()
+        try:
+            yield
+        finally:
+            await engine.dispose()
+            shutdown_tracing(tracing_provider)
 
     app = FastAPI(title="Omni Model API", version="0.1.0", lifespan=lifespan)
     app.state.settings = app_settings

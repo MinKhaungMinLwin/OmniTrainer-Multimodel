@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     ai_model: str = "omni-copilot-local-v1"
     ai_runs_per_minute: int = Field(default=30, ge=1, le=1000)
     ai_timeout_seconds: int = Field(default=15, ge=1, le=120)
+    tracing_enabled: bool = False
+    tracing_endpoint: str | None = None
+    tracing_public_url: str | None = None
+    tracing_api_key: str | None = Field(default=None, repr=False)
+    tracing_project_name: str = "omni-development"
+    tracing_sample_ratio: float = Field(default=1.0, ge=0.0, le=1.0)
+    tracing_capture_content: bool = False
     gemini_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("GEMINI_API_KEY", "OMNI_GEMINI_API_KEY", "gemini_api_key"),
@@ -65,6 +72,16 @@ class Settings(BaseSettings):
     @field_validator("gemini_base_url", mode="before")
     @classmethod
     def empty_gemini_base_url_is_none(cls, value: str | None) -> str | None:
+        return value or None
+
+    @field_validator("tracing_endpoint", mode="before")
+    @classmethod
+    def empty_tracing_endpoint_is_none(cls, value: str | None) -> str | None:
+        return value or None
+
+    @field_validator("tracing_public_url", mode="before")
+    @classmethod
+    def empty_tracing_public_url_is_none(cls, value: str | None) -> str | None:
         return value or None
 
 

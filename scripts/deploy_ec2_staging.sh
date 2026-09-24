@@ -23,12 +23,12 @@ compose=(docker compose --env-file "$env_file" -f compose.staging.yaml)
 
 "${compose[@]}" config --quiet
 "${compose[@]}" build migrate seed api worker voice
-"${compose[@]}" up -d --wait postgres redis minio
+"${compose[@]}" up -d --wait postgres redis minio phoenix
 "${compose[@]}" --profile tools run --rm migrate
 
 if grep -Eq '^OMNI_ALLOW_DEV_AUTH=(true|1|yes)$' "$env_file"; then
   "${compose[@]}" --profile tools run --rm seed
 fi
 
-"${compose[@]}" up -d --wait api worker voice caddy
+"${compose[@]}" up -d --wait phoenix api worker voice caddy
 "${compose[@]}" ps

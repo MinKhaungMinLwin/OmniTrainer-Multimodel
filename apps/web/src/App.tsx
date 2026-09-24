@@ -3278,6 +3278,11 @@ function AssistantPage({
   const pendingTool = activeRun?.tools.find(
     (tool) => tool.id === pendingApproval?.tool_invocation_id,
   );
+  const traceEvent = activeRun?.events.find(
+    (event) => event.event_type === "run_started",
+  );
+  const traceId = String(traceEvent?.payload.trace_id ?? "");
+  const traceUrl = String(traceEvent?.payload.trace_url ?? "");
   const error = run.error ?? review.error ?? ingest.error ?? regenerate.error;
 
   return (
@@ -3306,6 +3311,11 @@ function AssistantPage({
               <small>
                 {new Date(conversation.updated_at).toLocaleDateString()}
               </small>
+              {traceId && traceUrl && (
+                <a href={traceUrl} target="_blank" rel="noreferrer">
+                  Trace {traceId.slice(0, 8)} ↗
+                </a>
+              )}
             </button>
           ))}
         </div>
