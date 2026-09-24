@@ -7,6 +7,7 @@ from services.api.omni_api.ai_tools import (
     normalize_schedule_timestamp,
     normalize_tool_arguments,
 )
+from services.api.omni_api.ai_gateway import estimated_cost_micros
 from services.api.omni_api.config import Settings
 from services.api.omni_api.main import create_app
 
@@ -35,6 +36,11 @@ def authenticate(client: TestClient) -> dict[str, str]:
 
 def command(headers: dict[str, str], key: str) -> dict[str, str]:
     return {**headers, "Idempotency-Key": key}
+
+
+def test_gemini_cost_estimate_uses_standard_token_rates():
+    assert estimated_cost_micros("gemini-3.5-flash-lite", 1_000_000, 1_000_000) == 2_800_000
+    assert estimated_cost_micros("unknown-model", 1000, 1000) == 0
 
 
 def test_schedule_tool_discards_unexpected_customer_context():

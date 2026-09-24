@@ -21,6 +21,7 @@ class GatewayPlan:
     introduction: str
     tools: list[ToolPlan]
     input_tokens: int
+    output_tokens: int = 0
     provider: str = "local"
     model: str = "omni-copilot-local-v1"
     cost_micros: int = 0
@@ -28,6 +29,17 @@ class GatewayPlan:
 
 class CopilotProvider(Protocol):
     def plan(self, prompt: str) -> GatewayPlan: ...
+
+
+GEMINI_STANDARD_PRICING_PER_MILLION: dict[str, tuple[float, float]] = {
+    "gemini-3.5-flash-lite": (0.30, 2.50),
+}
+
+
+def estimated_cost_micros(model: str, input_tokens: int, output_tokens: int) -> int:
+    input_rate, output_rate = GEMINI_STANDARD_PRICING_PER_MILLION.get(model, (0.0, 0.0))
+    # A price in USD per million tokens has the same numeric rate in micro-USD per token.
+    return round(input_tokens * input_rate + output_tokens * output_rate)
 
 
 ToolName = Literal[
@@ -275,6 +287,7 @@ class LocalCopilotProvider:
             introduction=intro,
             tools=tools,
             input_tokens=max(1, len(safe_prompt.split())),
+            output_tokens=max(1, len(intro.split())),
         )
 
 
@@ -300,13 +313,22 @@ class GeminiCopilotProvider:
         plan = parsed if isinstance(parsed, GeminiPlan) else GeminiPlan.model_validate_json(response.text)
         usage = response.usage_metadata
         input_tokens = int(getattr(usage, "prompt_token_count", 0) or max(1, len(prompt.split())))
+        candidate_tokens = int(getattr(usage, "candidates_token_count", 0) or 0)
+        thinking_tokens = int(getattr(usage, "thoughts_token_count", 0) or 0)
+        reported_total = int(getattr(usage, "total_token_count", 0) or 0)
+        output_tokens = max(
+            candidate_tokens + thinking_tokens,
+            reported_total - input_tokens,
+            max(1, len((response.text or "").split())),
+        )
         return GatewayPlan(
             introduction=plan.response.strip(),
             tools=[ToolPlan(item.name, item.parsed_arguments()) for item in plan.tools],
             input_tokens=input_tokens,
+            output_tokens=output_tokens,
             provider="gemini",
             model=self.model,
-            cost_micros=0,
+            cost_micros=estimated_cost_micros(self.model, input_tokens, output_tokens),
         )
 
 
@@ -348,6 +370,7 @@ async def plan_with_resilience(
                 introduction=plan.introduction,
                 tools=[ToolPlan(item.name, restore_tokens(item.arguments, redaction_tokens)) for item in plan.tools],
                 input_tokens=plan.input_tokens,
+                output_tokens=plan.output_tokens,
                 provider=plan.provider,
                 model=plan.model,
                 cost_micros=plan.cost_micros,
@@ -363,6 +386,7 @@ async def plan_with_resilience(
                             for item in fallback.tools
                         ],
                         input_tokens=fallback.input_tokens,
+                        output_tokens=fallback.output_tokens,
                         provider=fallback.provider,
                         model=fallback.model,
                         cost_micros=fallback.cost_micros,

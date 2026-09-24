@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
-from openinference.semconv.trace import OpenInferenceSpanKindValues
+from openinference.semconv.trace import OpenInferenceSpanKindValues, SpanAttributes
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -199,7 +199,8 @@ async def finish_run(
         citations=citations or [],
     )
     session.add(message)
-    run.output_tokens += max(1, len(content.split()))
+    if run.output_tokens == 0:
+        run.output_tokens = max(1, len(content.split()))
     run.status = "completed"
     await session.flush()
     if corrected:
@@ -302,6 +303,28 @@ async def process_new_run(
         span.set_attribute("agent.input_tokens", run.input_tokens)
         span.set_attribute("agent.output_tokens", run.output_tokens)
         span.set_attribute("agent.cost_micros", run.cost_micros)
+        span.set_attribute(SpanAttributes.LLM_TOKEN_COUNT_PROMPT, run.input_tokens)
+        span.set_attribute(SpanAttributes.LLM_TOKEN_COUNT_COMPLETION, run.output_tokens)
+        span.set_attribute(SpanAttributes.LLM_TOKEN_COUNT_TOTAL, run.input_tokens + run.output_tokens)
+        span.set_attribute(SpanAttributes.LLM_COST_TOTAL, run.cost_micros / 1_000_000)
+        span.set_attribute("agent.cost_basis", "estimated_standard_list_price")
+        if request.app.state.settings.tracing_capture_content:
+            output = await session.scalar(
+                select(ConversationMessage.content)
+                .where(ConversationMessage.run_id == run.id, ConversationMessage.role == "assistant")
+                .order_by(ConversationMessage.created_at.desc())
+                .limit(1)
+            )
+            if output is None and run.status == "waiting_approval":
+                tool_name = await session.scalar(
+                    select(ToolInvocation.name).where(ToolInvocation.run_id == run.id).limit(1)
+                )
+                title = TOOL_REGISTRY[tool_name].title if tool_name in TOOL_REGISTRY else "tool action"
+                output = f"Human approval requested for {title}."
+            span.set_attribute(SpanAttributes.INPUT_VALUE, prompt)
+            span.set_attribute(SpanAttributes.INPUT_MIME_TYPE, "text/plain")
+            span.set_attribute(SpanAttributes.OUTPUT_VALUE, output or run.error_message or run.status)
+            span.set_attribute(SpanAttributes.OUTPUT_MIME_TYPE, "text/plain")
 
 
 async def _process_new_run(
@@ -351,6 +374,7 @@ async def _process_new_run(
     run.provider = plan.provider
     run.model = plan.model
     run.input_tokens = plan.input_tokens
+    run.output_tokens = plan.output_tokens
     run.cost_micros = plan.cost_micros
     summaries: list[str] = []
     citations: list[dict[str, Any]] = []
@@ -725,17 +749,29 @@ async def decide_approval(
         approval.decided_args = approval.proposed_args
         tool.status = "rejected"
         run.status = "running"
+        rejection_attributes: dict[str, Any] = {
+            "approval.decision": "reject",
+            "approval.tool_name": tool.name,
+            "approval.edited": False,
+        }
+        if request.app.state.settings.tracing_capture_content:
+            rejection_attributes.update(
+                {
+                    SpanAttributes.INPUT_VALUE: f"Reject {definition.title}",
+                    SpanAttributes.INPUT_MIME_TYPE: "text/plain",
+                    SpanAttributes.OUTPUT_VALUE: (
+                        f"The proposed {definition.title.lower()} was rejected and no change was made."
+                    ),
+                    SpanAttributes.OUTPUT_MIME_TYPE: "text/plain",
+                }
+            )
         with traced_span(
             "copilot.approval.decision",
             OpenInferenceSpanKindValues.CHAIN,
             session_id=run.conversation_id,
             user_id=context.user.id,
             metadata={"tenant_hash": hash_identifier(context.tenant_id), "run_id": run.id},
-            attributes={
-                "approval.decision": "reject",
-                "approval.tool_name": tool.name,
-                "approval.edited": False,
-            },
+            attributes=rejection_attributes,
         ):
             pass
         await append_event(
@@ -762,20 +798,34 @@ async def decide_approval(
         approval.decided_args = arguments
         tool.input = arguments
         run.status = "running"
+        decision_attributes: dict[str, Any] = {
+            "approval.decision": payload.decision,
+            "approval.tool_name": tool.name,
+            "approval.edited": payload.decision == "edit",
+        }
+        if request.app.state.settings.tracing_capture_content:
+            decision_attributes.update(
+                {
+                    SpanAttributes.INPUT_VALUE: f"{payload.decision.title()} {definition.title}",
+                    SpanAttributes.INPUT_MIME_TYPE: "text/plain",
+                }
+            )
         with traced_span(
             "copilot.approval.decision",
             OpenInferenceSpanKindValues.CHAIN,
             session_id=run.conversation_id,
             user_id=context.user.id,
             metadata={"tenant_hash": hash_identifier(context.tenant_id), "run_id": run.id},
-            attributes={
-                "approval.decision": payload.decision,
-                "approval.tool_name": tool.name,
-                "approval.edited": payload.decision == "edit",
-            },
+            attributes=decision_attributes,
         ) as approval_span:
             result = await execute_read_plan(session, run, tool, context, request)
             approval_span.set_attribute("approval.execution_status", tool.status)
+            if request.app.state.settings.tracing_capture_content:
+                approval_span.set_attribute(
+                    SpanAttributes.OUTPUT_VALUE,
+                    result["summary"] if result is not None else "Approved tool execution failed.",
+                )
+                approval_span.set_attribute(SpanAttributes.OUTPUT_MIME_TYPE, "text/plain")
         if result is None:
             run.status = "failed"
             run.error_code = "tool_error"

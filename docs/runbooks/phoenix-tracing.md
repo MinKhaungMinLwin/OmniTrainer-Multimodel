@@ -22,6 +22,10 @@ code mode, and product telemetry are disabled in this tracing-only deployment.
 ## Trace model
 
 - `copilot.agent.run` is the root agent span. Its session ID is the Omni conversation ID.
+- When `OMNI_TRACING_CAPTURE_CONTENT=true`, new agent and approval turns include OpenInference
+  `input.value` and `output.value` fields so Phoenix can render the conversation. Existing traces are not backfilled.
+- Agent spans publish OpenInference token totals and an estimated standard-list-price cost. Actual Gemini billing can
+  be lower, including zero on the free tier.
 - Google GenAI calls are auto-instrumented as child LLM spans.
 - `tool.<name>` spans contain risk, execution status, and input field names but never field values.
 - `knowledge.search` is a retriever span with query word count and result count.
