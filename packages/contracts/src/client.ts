@@ -362,7 +362,11 @@ export class OmniApiClient {
 
   transcribeAudio(file: Blob): Promise<{ text: string; model: string }> {
     const form = new FormData();
-    const extension = file.type.includes("ogg") ? "ogg" : "webm";
+    const extension = file.type.includes("ogg")
+      ? "ogg"
+      : file.type.includes("mp4")
+        ? "m4a"
+        : "webm";
     form.append("file", file, `recording.${extension}`);
     return this.request(
       "/api/v1/ai/audio/transcriptions",
