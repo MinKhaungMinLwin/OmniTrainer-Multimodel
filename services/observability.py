@@ -61,10 +61,10 @@ def configure_tracing(settings: Any, service_name: str) -> TracerProvider | None
                 hide_choices=hide_content,
             ),
         )
-    except Exception:
+    except Exception as exc:
         # Provider instrumentation is optional. Manual Omni spans must continue to
         # work even when a google-genai/OpenInference version pair is incompatible.
-        logger.warning("Google GenAI auto-instrumentation is unavailable", exc_info=True)
+        logger.warning("Google GenAI auto-instrumentation is unavailable: %s", exc)
     return _provider
 
 
