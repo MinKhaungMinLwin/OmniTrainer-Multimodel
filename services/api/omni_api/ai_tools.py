@@ -265,6 +265,12 @@ def validate_arguments(definition: ToolDefinition, arguments: dict[str, Any]) ->
             raise ToolInputError(f"Field {name} is too short")
 
 
+def normalize_tool_arguments(definition: ToolDefinition, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Keep only the explicitly allowlisted input fields for a model tool call."""
+    allowed = definition.input_schema["properties"]
+    return {name: value for name, value in arguments.items() if name in allowed}
+
+
 def words(value: str) -> set[str]:
     return {word for word in re.findall(r"[a-z0-9]+", value.lower()) if len(word) > 2}
 

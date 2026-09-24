@@ -37,6 +37,7 @@ from services.api.omni_api.ai_tools import (
     TOOL_REGISTRY,
     ToolInputError,
     execute_tool,
+    normalize_tool_arguments,
     registry_payload,
     search_knowledge,
 )
@@ -319,7 +320,7 @@ async def process_new_run(
             version=definition.version,
             risk=definition.risk,
             status="proposed",
-            input=plan_item.arguments,
+            input=normalize_tool_arguments(definition, plan_item.arguments),
             idempotency_key=f"ai-tool-{run.id}-{len(parts) + 1}",
         )
         session.add(tool)

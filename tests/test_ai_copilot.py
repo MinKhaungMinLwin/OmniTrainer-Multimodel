@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from services.api.omni_api.ai_tools import TOOL_REGISTRY, normalize_tool_arguments
 from services.api.omni_api.config import Settings
 from services.api.omni_api.main import create_app
 
@@ -30,6 +31,25 @@ def authenticate(client: TestClient) -> dict[str, str]:
 
 def command(headers: dict[str, str], key: str) -> dict[str, str]:
     return {**headers, "Idempotency-Key": key}
+
+
+def test_schedule_tool_discards_unexpected_customer_context():
+    arguments = normalize_tool_arguments(
+        TOOL_REGISTRY["propose_schedule"],
+        {
+            "job_title": "Marketing",
+            "starts_at": "2026-09-25T10:00:00",
+            "ends_at": "2026-09-25T11:00:00",
+            "timezone": "UTC",
+            "customer_name": "James Along",
+        },
+    )
+    assert arguments == {
+        "job_title": "Marketing",
+        "starts_at": "2026-09-25T10:00:00",
+        "ends_at": "2026-09-25T11:00:00",
+        "timezone": "UTC",
+    }
 
 
 def approve(client: TestClient, headers: dict[str, str], run: dict) -> dict:
