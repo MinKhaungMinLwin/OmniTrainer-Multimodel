@@ -82,6 +82,19 @@ test("streams cited answers and reviews an edited write proposal", async ({
     page.getByText(`Created draft job “Reviewed AI job ${suffix}”.`).last(),
   ).toBeVisible();
   await expect(page.locator(".tool-card").last()).toContainText("completed");
+  const layout = await page.evaluate(() => {
+    const thread = document.querySelector<HTMLElement>(".message-thread");
+    const shell = document.querySelector<HTMLElement>(".app-shell");
+    return {
+      documentHeight: document.documentElement.scrollHeight,
+      viewportHeight: window.innerHeight,
+      shellHeight: shell?.getBoundingClientRect().height ?? 0,
+      threadOverflow: thread ? getComputedStyle(thread).overflowY : "",
+    };
+  });
+  expect(layout.documentHeight).toBeLessThanOrEqual(layout.viewportHeight + 1);
+  expect(layout.shellHeight).toBeGreaterThanOrEqual(layout.viewportHeight - 1);
+  expect(layout.threadOverflow).toBe("auto");
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(
     accessibility.violations.filter((item) =>

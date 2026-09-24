@@ -6,13 +6,18 @@
   background: #f7f8f4;
   font-synthesis: none;
 }
+html,
+body,
+#root {
+  height: 100%;
+}
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  overflow: hidden;
 }
 .sr-only {
   position: absolute;
@@ -33,10 +38,13 @@ body {
   font-size: 13px;
 }
 .page-boundary {
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   margin: 0;
   padding: 0;
   border: 0;
+  overflow: auto;
 }
 .page-boundary:disabled button,
 .page-boundary:disabled input,
@@ -130,11 +138,16 @@ select:focus {
   font-weight: 700;
 }
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   display: grid;
   grid-template-columns: 220px 1fr;
+  overflow: hidden;
 }
 .app-shell > aside {
+  min-height: 0;
+  overflow-y: auto;
   background: #13231d;
   color: #c8d7d0;
   padding: 25px 18px;
@@ -182,7 +195,15 @@ nav em {
   letter-spacing: 0.08em;
   color: #b8c4bf;
 }
+.workspace {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 .workspace > header {
+  flex: 0 0 70px;
   height: 70px;
   padding: 0 32px;
   border-bottom: 1px solid #dbe2dd;
@@ -492,7 +513,8 @@ article > span {
   font-weight: 600;
 }
 .assistant-page {
-  height: calc(100vh - 70px);
+  height: 100%;
+  min-height: 0;
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
   overflow: hidden;
@@ -539,8 +561,10 @@ article > span {
 }
 .copilot-workspace {
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
   background: #fbfcfa;
 }
 .assistant-heading {
@@ -567,6 +591,7 @@ article > span {
   text-transform: capitalize;
 }
 .message-thread {
+  min-height: 0;
   width: min(820px, 100%);
   margin: 0 auto;
   padding: 30px 24px 60px;
