@@ -22,7 +22,9 @@ export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
 compose=(docker compose --env-file "$env_file" -f compose.staging.yaml)
 
 "${compose[@]}" config --quiet
-"${compose[@]}" build migrate seed api worker voice
+for service in migrate seed api worker voice; do
+  "${compose[@]}" build "$service"
+done
 "${compose[@]}" up -d --wait postgres redis minio phoenix
 "${compose[@]}" --profile tools run --rm migrate
 
