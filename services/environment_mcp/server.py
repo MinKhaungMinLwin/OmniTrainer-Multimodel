@@ -12,7 +12,6 @@ from services.environment_mcp.domain import (
     workspace_root,
 )
 
-
 mcp = MCPServer(
     "omni-environment",
     title="Omni Environmental Project Assistant",

@@ -41,6 +41,7 @@ dependencies = [
     "anthropic>=0.70.0",
     "mcp>=2.0.0,<3",
     "openpyxl>=3.1.5",
+    "python-docx>=1.1.2",
     "openinference-instrumentation-google-genai>=0.1.0",
 ]
 
@@ -102,6 +103,7 @@ platform = [
     "anthropic>=0.70.0",
     "mcp>=2.0.0,<3",
     "openpyxl>=3.1.5",
+    "python-docx>=1.1.2",
     "arize-phoenix-otel>=0.13.1",
     "openinference-instrumentation-google-genai>=0.1.0",
 ]

@@ -1,12 +1,14 @@
 import json
 import os
 import re
+from io import BytesIO
 from pathlib import Path
 from typing import Any
+from zipfile import BadZipFile
 
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 from pydantic import BaseModel, Field
-
 
 DISCLAIMER = (
     "Portfolio demonstration only. Screening results require review by a qualified "
@@ -165,14 +167,48 @@ def validate_lab_workbook(
     root: Path | None = None,
 ) -> WorkbookValidation:
     path = project_file(project_id, relative_path, root)
-    sheet = load_workbook(path, read_only=True, data_only=True).active
+    return _validate_workbook(project_id, relative_path, path, root=root)
+
+
+def validate_lab_workbook_bytes(
+    project_id: str,
+    filename: str,
+    content: bytes,
+    *,
+    root: Path | None = None,
+) -> WorkbookValidation:
+    """Validate an uploaded workbook without granting filesystem access."""
+    if not filename.lower().endswith(".xlsx"):
+        raise ValueError("laboratory input must be an .xlsx workbook")
+    if len(content) > 20 * 1024 * 1024:
+        raise ValueError("laboratory workbook exceeds the 20 MB safety limit")
+    try:
+        return _validate_workbook(project_id, filename, BytesIO(content), root=root)
+    except (OSError, ValueError, KeyError, BadZipFile, InvalidFileException) as exc:
+        return WorkbookValidation(
+            project_id=project_id,
+            file=filename,
+            valid=False,
+            row_count=0,
+            errors=[f"could not read workbook: {exc}"],
+        )
+
+
+def _validate_workbook(
+    project_id: str,
+    filename: str,
+    source: Any,
+    *,
+    root: Path | None = None,
+) -> WorkbookValidation:
+    sheet = load_workbook(source, read_only=True, data_only=True).active
     rows = sheet.iter_rows(values_only=True)
     headers = [_normalise_header(value) for value in next(rows, ())]
     missing = sorted(REQUIRED_COLUMNS - set(headers))
     if missing:
         return WorkbookValidation(
             project_id=project_id,
-            file=relative_path,
+            file=filename,
             valid=False,
             row_count=0,
             errors=[f"missing required columns: {', '.join(missing)}"],
@@ -209,7 +245,7 @@ def validate_lab_workbook(
         classifications[item.classification] = classifications.get(item.classification, 0) + 1
     return WorkbookValidation(
         project_id=project_id,
-        file=relative_path,
+        file=filename,
         valid=not errors and bool(results),
         row_count=len(results),
         errors=errors or ([] if results else ["workbook contains no laboratory result rows"]),
@@ -251,6 +287,24 @@ def draft_screening_report(
     root: Path | None = None,
 ) -> dict[str, Any]:
     validation = validate_lab_workbook(project_id, lab_file, root=root)
+    return draft_screening_report_from_validation(
+        project_id,
+        lab_file,
+        question,
+        validation,
+        root=root,
+    )
+
+
+def draft_screening_report_from_validation(
+    project_id: str,
+    lab_file: str,
+    question: str,
+    validation: WorkbookValidation | dict[str, Any],
+    *,
+    root: Path | None = None,
+) -> dict[str, Any]:
+    validation = WorkbookValidation.model_validate(validation)
     sources = search_documents(question, root=root)
     above = [item for item in validation.screening if item.classification == "above_criterion"]
     source_lines = [f"- [{item['title']}]({item['source_uri']})" for item in sources["matches"]]

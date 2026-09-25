@@ -517,6 +517,7 @@ article > span {
   min-height: 0;
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 .conversation-rail {
@@ -536,11 +537,18 @@ article > span {
   flex: 1;
   overflow-y: auto;
 }
-.conversation-list button {
+.conversation-list-item {
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+  overflow: hidden;
+  border-radius: 12px;
+}
+.conversation-list-item > button {
   display: grid;
   gap: 5px;
   width: 100%;
-  padding: 11px;
+  padding: 7px;
   overflow: hidden;
   color: #405049;
   background: transparent;
@@ -548,10 +556,19 @@ article > span {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.conversation-list button.selected {
+.conversation-list-item.selected {
   color: #164f3b;
   background: white;
   box-shadow: 0 1px 4px #13231d12;
+}
+.conversation-list-item.selected > button {
+  color: #164f3b;
+}
+.conversation-list-item > a {
+  padding: 2px 7px 6px;
+  color: #176b4d;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 .conversation-list small,
 .tool-card-heading small,
@@ -1280,6 +1297,129 @@ article > span {
   color: #176b4d;
   text-transform: capitalize;
 }
+.environment-page {
+  min-height: 100%;
+  padding: 34px clamp(24px, 5vw, 72px) 72px;
+  background: #f7f8f4;
+}
+.environment-demo-label {
+  padding: 8px 12px;
+  border: 1px solid #d49a21;
+  border-radius: 999px;
+  color: #73510d;
+  background: #fff8e6;
+  font-size: 12px;
+  font-weight: 700;
+}
+.environment-layout {
+  display: grid;
+  grid-template-columns: minmax(520px, 1.15fr) minmax(380px, 0.85fr);
+  gap: 28px;
+  align-items: start;
+}
+.environment-column {
+  display: grid;
+  gap: 20px;
+}
+.environment-card {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid #dbe2dd;
+  border-radius: 18px;
+  background: white;
+  box-shadow: 0 8px 26px #234b3812;
+}
+.environment-card h2,
+.environment-card p {
+  margin: 0;
+}
+.environment-project-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.environment-project-form button {
+  grid-column: span 2;
+}
+.environment-validation,
+.environment-report {
+  display: grid;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e3e9e5;
+}
+.environment-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.environment-metrics .metric {
+  min-width: 0;
+}
+.environment-table-wrap {
+  overflow-x: auto;
+}
+.environment-results table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.environment-results th,
+.environment-results td {
+  padding: 10px;
+  border-bottom: 1px solid #e3e9e5;
+  text-align: left;
+  white-space: nowrap;
+}
+.environment-search {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+.environment-source {
+  padding: 14px;
+  border-left: 3px solid #176b4d;
+  border-radius: 8px;
+  background: #f4f7f5;
+}
+.environment-source p {
+  margin: 6px 0;
+  font-size: 13px;
+}
+.environment-source code {
+  color: #176b4d;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.environment-draft-warning {
+  padding: 11px;
+  border-radius: 9px;
+  color: #8a251b;
+  background: #fff0ee;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.environment-report-editor {
+  max-height: 420px;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  border-radius: 10px;
+  background: #f4f7f5;
+  font:
+    13px/1.6 "DM Sans",
+    sans-serif;
+  white-space: pre-wrap;
+  resize: vertical;
+}
+.environment-disclaimer {
+  margin: 24px 0 0;
+  color: #66756f;
+  font-size: 12px;
+  text-align: center;
+}
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -1341,12 +1481,25 @@ article > span {
   .intelligence-page {
     padding: 24px 16px;
   }
+  .environment-page {
+    padding: 24px 16px;
+  }
   .automation-metrics,
   .automation-layout,
   .template-grid,
   .voice-layout,
   .intelligence-layout {
     grid-template-columns: 1fr;
+  }
+  .environment-layout,
+  .environment-project-form {
+    grid-template-columns: 1fr;
+  }
+  .environment-project-form button {
+    grid-column: auto;
+  }
+  .environment-metrics {
+    grid-template-columns: 1fr 1fr;
   }
   .intelligence-result {
     grid-template-columns: 1fr;
