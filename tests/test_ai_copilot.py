@@ -2,12 +2,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from services.api.omni_api.ai_gateway import estimated_cost_micros
 from services.api.omni_api.ai_tools import (
     TOOL_REGISTRY,
     normalize_schedule_timestamp,
     normalize_tool_arguments,
 )
-from services.api.omni_api.ai_gateway import estimated_cost_micros
 from services.api.omni_api.config import Settings
 from services.api.omni_api.main import create_app
 

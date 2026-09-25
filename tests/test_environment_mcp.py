@@ -11,7 +11,6 @@ from services.environment_mcp.domain import (
 )
 from services.environment_mcp.server import mcp
 
-
 WORKSPACE = Path(__file__).parents[1] / "data" / "environment"
 
 
