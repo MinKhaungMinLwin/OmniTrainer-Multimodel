@@ -1,0 +1,1 @@
+"""Environmental project MCP service."""

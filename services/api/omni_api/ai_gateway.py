@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
+from anthropic import Anthropic
 from google import genai
 from google.genai import types
 from openai import OpenAI
@@ -35,6 +36,7 @@ class CopilotProvider(Protocol):
 STANDARD_PRICING_PER_MILLION: dict[str, tuple[float, float]] = {
     "gemini-3.5-flash-lite": (0.30, 2.50),
     "gpt-5.6-sol": (4.00, 20.00),
+    "claude-sonnet-5": (2.00, 10.00),
 }
 
 
@@ -373,6 +375,54 @@ class OpenAICopilotProvider:
         )
 
 
+class AnthropicCopilotProvider:
+    def __init__(self, api_key: str, model: str, base_url: str | None = None):
+        self.client = Anthropic(api_key=api_key, base_url=base_url.rstrip("/") if base_url else None)
+        self.model = model
+
+    def plan(self, prompt: str) -> GatewayPlan:
+        from services.api.omni_api.ai_tools import TOOL_REGISTRY
+
+        today = datetime.now().astimezone().date().isoformat()
+        tools = [
+            {
+                "name": definition.name,
+                "description": definition.description,
+                "input_schema": definition.input_schema,
+                "strict": True,
+            }
+            for definition in TOOL_REGISTRY.values()
+        ]
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=2048,
+            system=AGENT_INSTRUCTION,
+            messages=[{"role": "user", "content": f"Current date: {today}\n{prompt}"}],
+            tools=tools,
+        )
+        text = " ".join(
+            str(block.text).strip()
+            for block in response.content
+            if getattr(block, "type", None) == "text" and str(block.text).strip()
+        )
+        tool_plans = [
+            ToolPlan(str(block.name), dict(block.input))
+            for block in response.content
+            if getattr(block, "type", None) == "tool_use"
+        ]
+        input_tokens = int(getattr(response.usage, "input_tokens", 0) or max(1, len(prompt.split())))
+        output_tokens = int(getattr(response.usage, "output_tokens", 0) or max(1, len(text.split())))
+        return GatewayPlan(
+            introduction=text or "I prepared the requested actions for review.",
+            tools=tool_plans,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            provider="anthropic",
+            model=self.model,
+            cost_micros=estimated_cost_micros(self.model, input_tokens, output_tokens),
+        )
+
+
 def get_copilot_provider(
     provider_name: str = "local",
     *,
@@ -389,6 +439,10 @@ def get_copilot_provider(
         if not api_key:
             raise ValueError("OPENAI_API_KEY is required when OMNI_AI_PROVIDER=openai")
         return OpenAICopilotProvider(api_key, model, base_url, reasoning_effort)
+    if provider_name == "anthropic":
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY is required when OMNI_AI_PROVIDER=anthropic")
+        return AnthropicCopilotProvider(api_key, model, base_url)
     if provider_name != "local":
         raise ValueError(f"Unsupported AI provider: {provider_name}")
     return LocalCopilotProvider()

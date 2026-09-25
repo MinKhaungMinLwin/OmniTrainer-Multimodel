@@ -41,6 +41,7 @@ def command(headers: dict[str, str], key: str) -> dict[str, str]:
 def test_cost_estimate_uses_standard_token_rates():
     assert estimated_cost_micros("gemini-3.5-flash-lite", 1_000_000, 1_000_000) == 2_800_000
     assert estimated_cost_micros("gpt-5.6-sol", 1_000_000, 1_000_000) == 24_000_000
+    assert estimated_cost_micros("claude-sonnet-5", 1_000_000, 1_000_000) == 12_000_000
     assert estimated_cost_micros("unknown-model", 1000, 1000) == 0
 
 

@@ -54,6 +54,15 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("OPENAI_BASE_URL", "OMNI_OPENAI_BASE_URL", "openai_base_url"),
     )
     openai_reasoning_effort: str = "low"
+    anthropic_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ANTHROPIC_API_KEY", "OMNI_ANTHROPIC_API_KEY", "anthropic_api_key"),
+        repr=False,
+    )
+    anthropic_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ANTHROPIC_BASE_URL", "OMNI_ANTHROPIC_BASE_URL", "anthropic_base_url"),
+    )
     gemini_stt_model: str = "gemini-3.5-flash-lite"
     gemini_tts_model: str = "gemini-2.5-flash-preview-tts"
     gemini_tts_voice: str = "Kore"
@@ -87,6 +96,11 @@ class Settings(BaseSettings):
     @field_validator("openai_base_url", mode="before")
     @classmethod
     def empty_openai_base_url_is_none(cls, value: str | None) -> str | None:
+        return value or None
+
+    @field_validator("anthropic_base_url", mode="before")
+    @classmethod
+    def empty_anthropic_base_url_is_none(cls, value: str | None) -> str | None:
         return value or None
 
     @field_validator("tracing_endpoint", mode="before")

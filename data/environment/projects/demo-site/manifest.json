@@ -1,0 +1,9 @@
+{
+  "project_id": "demo-site",
+  "name": "Synthetic Groundwater Screening Demonstration",
+  "jurisdiction": "Western Australia",
+  "data_classification": "synthetic-public-demo",
+  "laboratory_workbook": "laboratory-results.xlsx",
+  "review_status": "not_reviewed",
+  "warning": "No real client, site, laboratory, or regulatory data is included."
+}

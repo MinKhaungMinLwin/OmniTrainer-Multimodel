@@ -138,7 +138,7 @@ bucket in the container stack. See
 [ADR 0002](docs/architecture/0002-operations-domain-commands.md) and
 [ADR 0003](docs/architecture/0003-operations-mvp-storage-and-payments.md).
 
-## AI Copilot
+## Omni Agent
 
 The Assistant area on web and mobile provides durable, tenant-scoped AI runs
 with resumable server-sent events. Read tools execute immediately; write and
@@ -150,13 +150,36 @@ replayable in PostgreSQL.
 The built-in local provider makes development and CI deterministic. It supports
 customer search, job history, availability, invoices, cited knowledge search,
 job/note/schedule/invoice proposals, and approved outbound-message queuing.
-Provider routing, PII tokenization, timeout/retry/fallback policy, and the tool
-registry are independent of that provider. See
+Provider routing supports deterministic local planning, Gemini, OpenAI, and
+Claude native tool use. PII tokenization, timeout/retry/fallback policy, and the
+tool registry are independent of the provider. See
 [ADR 0004](docs/architecture/0004-ai-copilot-runtime.md).
 
 Owners can index role-filtered knowledge from the Assistant. Low-confidence
 lead, contact, and job-request extraction results enter the human correction
 queue with source offsets and extractor versions preserved.
+
+## Environmental MCP portfolio workflow
+
+The `omni-environment-mcp` service is a deliberately constrained Python MCP
+server for an environmental project demonstration. It exposes authorized
+resources and structured tools to search cited references, validate a synthetic
+laboratory XLSX workbook, compare results with explicitly fictional screening
+criteria, and prepare a non-publishable report draft. Project paths are confined
+to the selected workspace and every report requires qualified human review.
+
+Generate the synthetic workbook, run the deterministic tests, and start the
+stdio server:
+
+```bash
+uv run python scripts/create_environment_demo_data.py
+uv run pytest tests/test_environment_mcp.py
+uv run omni-environment-mcp
+```
+
+Set `OMNI_ENVIRONMENT_WORKSPACE` to use another authorized synthetic workspace.
+No real client, laboratory, site, or regulatory data belongs in the repository.
+See [ADR 0009](docs/architecture/0009-environmental-mcp.md).
 
 The legacy moderation proof of concept remains available through `uv run multimodal-moderation`:
 

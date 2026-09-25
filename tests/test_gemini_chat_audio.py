@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from services.api.omni_api.ai_gateway import (
+    AnthropicCopilotProvider,
     GeminiCopilotProvider,
     GeminiPlan,
     GeminiToolPlan,
@@ -86,6 +87,33 @@ def test_openai_provider_returns_typed_plan_with_usage_and_cost():
     assert result.input_tokens == 100
     assert result.output_tokens == 25
     assert result.cost_micros == 900
+    assert result.tools[0].arguments["name"] == "James X"
+
+
+def test_anthropic_provider_uses_native_typed_tools_and_usage():
+    provider = AnthropicCopilotProvider("test-key", "claude-sonnet-5")
+    provider.client = SimpleNamespace(
+        messages=SimpleNamespace(
+            create=lambda **_: SimpleNamespace(
+                content=[
+                    SimpleNamespace(type="text", text="I’ll prepare James X for review."),
+                    SimpleNamespace(
+                        type="tool_use",
+                        name="create_customer",
+                        input={"name": "James X", "email": None, "phone": None, "notes": None},
+                    ),
+                ],
+                usage=SimpleNamespace(input_tokens=100, output_tokens=25),
+            )
+        )
+    )
+
+    result = provider.plan("Add James X to our customer list")
+
+    assert result.provider == "anthropic"
+    assert result.model == "claude-sonnet-5"
+    assert result.cost_micros == 450
+    assert result.tools[0].name == "create_customer"
     assert result.tools[0].arguments["name"] == "James X"
 
 

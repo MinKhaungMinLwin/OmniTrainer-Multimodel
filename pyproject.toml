@@ -20,7 +20,7 @@ dependencies = [
     "pydantic-ai>=0.1.0",
     "google-genai>=0.3.0",
     "python-dotenv>=1.0.0",
-    "gradio>=4.0.0",
+    "gradio>=4.0.0,<6",
     "requests>=2.31.0",
     "filetype>=1.2.0",
     "arize-phoenix>=12.2.0",
@@ -38,6 +38,10 @@ dependencies = [
     "boto3>=1.40.0",
     "python-multipart>=0.0.20",
     "reportlab>=4.4.0",
+    "anthropic>=0.70.0",
+    "mcp>=2.0.0,<3",
+    "openpyxl>=3.1.5",
+    "openinference-instrumentation-google-genai>=0.1.0",
 ]
 
 [project.scripts]
@@ -49,6 +53,7 @@ omni-worker = "services.worker.omni_worker.main:main"
 omni-seed = "services.api.omni_api.seed:main"
 omni-openapi = "services.api.omni_api.openapi:main"
 omni-voice = "services.voice.omni_voice.main:main"
+omni-environment-mcp = "services.environment_mcp.server:main"
 
 [tool.black]
 line-length = 120
@@ -94,6 +99,9 @@ platform = [
     "reportlab>=4.4.0",
     "google-genai>=1.45.0",
     "openai>=2.0.0",
+    "anthropic>=0.70.0",
+    "mcp>=2.0.0,<3",
+    "openpyxl>=3.1.5",
     "arize-phoenix-otel>=0.13.1",
     "openinference-instrumentation-google-genai>=0.1.0",
 ]

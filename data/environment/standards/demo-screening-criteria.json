@@ -1,0 +1,28 @@
+{
+  "name": "Synthetic portfolio screening criteria",
+  "version": "2026-09-25",
+  "disclaimer": "Demonstration values only. Not regulatory criteria.",
+  "criteria": [
+    {
+      "analyte": "PFOS",
+      "value": 0.07,
+      "unit": "ug/L",
+      "source_uri": "environment://documents/demo-screening-framework.md",
+      "label": "Synthetic groundwater screening value"
+    },
+    {
+      "analyte": "PFOA",
+      "value": 0.56,
+      "unit": "ug/L",
+      "source_uri": "environment://documents/demo-screening-framework.md",
+      "label": "Synthetic groundwater screening value"
+    },
+    {
+      "analyte": "Benzene",
+      "value": 0.001,
+      "unit": "mg/L",
+      "source_uri": "environment://documents/demo-screening-framework.md",
+      "label": "Synthetic groundwater screening value"
+    }
+  ]
+}

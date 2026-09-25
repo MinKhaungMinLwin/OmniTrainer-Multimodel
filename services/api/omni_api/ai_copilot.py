@@ -364,8 +364,12 @@ async def _process_new_run(
             f"{message.role.upper()}: {message.content}" for message in recent_messages
         )
     settings = request.app.state.settings
-    provider_api_key = settings.openai_api_key if run.provider == "openai" else settings.gemini_api_key
-    provider_base_url = settings.openai_base_url if run.provider == "openai" else settings.gemini_base_url
+    provider_credentials = {
+        "openai": (settings.openai_api_key, settings.openai_base_url),
+        "anthropic": (settings.anthropic_api_key, settings.anthropic_base_url),
+        "gemini": (settings.gemini_api_key, settings.gemini_base_url),
+    }
+    provider_api_key, provider_base_url = provider_credentials.get(run.provider, (None, None))
     plan = await plan_with_resilience(
         run.provider,
         provider_prompt,
