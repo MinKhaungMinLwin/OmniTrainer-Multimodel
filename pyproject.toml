@@ -93,6 +93,7 @@ platform = [
     "python-multipart>=0.0.20",
     "reportlab>=4.4.0",
     "google-genai>=1.45.0",
+    "openai>=2.0.0",
     "arize-phoenix-otel>=0.13.1",
     "openinference-instrumentation-google-genai>=0.1.0",
 ]

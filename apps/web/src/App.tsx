@@ -1801,7 +1801,7 @@ export function ChatMessage({
 
   return (
     <article className={`chat-message ${message.role}`}>
-      <span>{message.role === "user" ? "You" : "Omni Copilot"}</span>
+      <span>{message.role === "user" ? "You" : "Omni Agent"}</span>
       <p>{message.content}</p>
       {message.role === "assistant" && (
         <button
@@ -3184,7 +3184,7 @@ function AssistantPage({
       api.reviewExtraction(id, {
         decision,
         corrected_fields: fields,
-        reason: "Reviewed in Omni Copilot",
+        reason: "Reviewed in Omni Agent",
       }),
     onSuccess: () =>
       cache.invalidateQueries({ queryKey: ["ai-extractions", tenantId] }),
@@ -3341,7 +3341,7 @@ function AssistantPage({
       <section className="copilot-workspace">
         <header className="assistant-heading">
           <div>
-            <span className="eyebrow">Omni Copilot</span>
+            <span className="eyebrow">Omni Agent</span>
             <h1>Ask, review, then act.</h1>
           </div>
           {activeRun && (
@@ -3470,7 +3470,7 @@ function AssistantPage({
               )}
               {streamedText && pendingPrompt && (
                 <article className="chat-message assistant streaming">
-                  <span>Omni Copilot</span>
+                  <span>Omni Agent</span>
                   <p>{streamedText}</p>
                 </article>
               )}
@@ -3539,7 +3539,7 @@ function AssistantPage({
                 }}
               >
                 <label className="sr-only" htmlFor="copilot-prompt">
-                  Message Omni Copilot
+                  Message Omni Agent
                 </label>
                 <textarea
                   id="copilot-prompt"

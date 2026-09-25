@@ -57,7 +57,7 @@ test("streams cited answers and reviews an edited write proposal", async ({
   await expect(page.getByText(`E2E cancellation ${suffix}`)).toBeVisible();
   await page.getByRole("button", { name: "Close knowledge" }).click();
 
-  const prompt = page.getByLabel("Message Omni Copilot");
+  const prompt = page.getByLabel("Message Omni Agent");
   await prompt.fill(`What is cancellation code ${suffix}?`);
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".tool-card").last()).toContainText(

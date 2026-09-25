@@ -350,7 +350,7 @@ async def _process_new_run(
         },
     )
     provider_prompt = prompt
-    if run.provider == "gemini":
+    if run.provider != "local":
         recent_messages = list(
             await session.scalars(
                 select(ConversationMessage)
@@ -363,13 +363,17 @@ async def _process_new_run(
         provider_prompt = "Conversation history:\n" + "\n".join(
             f"{message.role.upper()}: {message.content}" for message in recent_messages
         )
+    settings = request.app.state.settings
+    provider_api_key = settings.openai_api_key if run.provider == "openai" else settings.gemini_api_key
+    provider_base_url = settings.openai_base_url if run.provider == "openai" else settings.gemini_base_url
     plan = await plan_with_resilience(
         run.provider,
         provider_prompt,
-        timeout_seconds=request.app.state.settings.ai_timeout_seconds,
-        api_key=request.app.state.settings.gemini_api_key,
-        model=request.app.state.settings.ai_model,
-        base_url=request.app.state.settings.gemini_base_url,
+        timeout_seconds=settings.ai_timeout_seconds,
+        api_key=provider_api_key,
+        model=settings.ai_model,
+        base_url=provider_base_url,
+        reasoning_effort=settings.openai_reasoning_effort,
     )
     run.provider = plan.provider
     run.model = plan.model

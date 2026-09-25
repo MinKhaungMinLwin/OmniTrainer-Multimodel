@@ -3,7 +3,12 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from services.api.omni_api.ai_gateway import GeminiCopilotProvider, GeminiPlan, GeminiToolPlan
+from services.api.omni_api.ai_gateway import (
+    GeminiCopilotProvider,
+    GeminiPlan,
+    GeminiToolPlan,
+    OpenAICopilotProvider,
+)
 from services.api.omni_api.config import Settings
 from services.api.omni_api.gemini_audio import GeminiAudioService, Transcription, pcm_to_wav
 from services.api.omni_api.main import create_app
@@ -51,6 +56,36 @@ def test_gemini_provider_accepts_reviewed_customer_creation_tool():
     )
     result = provider.plan("Add James X to our customer list")
     assert result.tools[0].name == "create_customer"
+    assert result.tools[0].arguments["name"] == "James X"
+
+
+def test_openai_provider_returns_typed_plan_with_usage_and_cost():
+    provider = OpenAICopilotProvider("test-key", "gpt-5.6-sol")
+    provider.client = SimpleNamespace(
+        responses=SimpleNamespace(
+            parse=lambda **kwargs: SimpleNamespace(
+                output_parsed=GeminiPlan(
+                    response="I’ll prepare James X for review.",
+                    tools=[
+                        GeminiToolPlan(
+                            name="create_customer",
+                            arguments_json='{"name":"James X","email":null,"phone":null,"notes":null}',
+                        )
+                    ],
+                ),
+                usage=SimpleNamespace(input_tokens=100, output_tokens=25),
+                request=kwargs,
+            )
+        )
+    )
+
+    result = provider.plan("Add James X to our customer list")
+
+    assert result.provider == "openai"
+    assert result.model == "gpt-5.6-sol"
+    assert result.input_tokens == 100
+    assert result.output_tokens == 25
+    assert result.cost_micros == 900
     assert result.tools[0].arguments["name"] == "James X"
 
 

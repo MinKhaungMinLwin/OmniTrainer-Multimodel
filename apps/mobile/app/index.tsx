@@ -1397,7 +1397,7 @@ function MobileChatMessage({ message }: { message: ConversationMessage }) {
             : styles.eyebrow
         }
       >
-        {message.role === "user" ? "YOU" : "OMNI COPILOT"}
+        {message.role === "user" ? "YOU" : "OMNI AGENT"}
       </Text>
       <Text
         style={
@@ -1699,7 +1699,7 @@ function MobileAssistant({
         ))}
         {streamText && run.isPending && (
           <View style={styles.mobileMessage}>
-            <Text style={styles.eyebrow}>OMNI COPILOT</Text>
+            <Text style={styles.eyebrow}>OMNI AGENT</Text>
             <Text style={styles.body}>{streamText}</Text>
           </View>
         )}
@@ -1760,9 +1760,9 @@ function MobileAssistant({
         )}
       <View style={styles.mobileComposer}>
         <TextInput
-          accessibilityLabel="Message Omni Copilot"
+          accessibilityLabel="Message Omni Agent"
           multiline
-          placeholder="Ask Omni Copilot…"
+          placeholder="Ask Omni Agent…"
           style={[styles.input, { flex: 1 }]}
           value={prompt}
           onChangeText={setPrompt}

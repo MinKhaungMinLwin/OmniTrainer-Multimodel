@@ -44,6 +44,16 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("GOOGLE_GEMINI_BASE_URL", "OMNI_GEMINI_BASE_URL", "gemini_base_url"),
     )
+    openai_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_API_KEY", "OMNI_OPENAI_API_KEY", "openai_api_key"),
+        repr=False,
+    )
+    openai_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_BASE_URL", "OMNI_OPENAI_BASE_URL", "openai_base_url"),
+    )
+    openai_reasoning_effort: str = "low"
     gemini_stt_model: str = "gemini-3.5-flash-lite"
     gemini_tts_model: str = "gemini-2.5-flash-preview-tts"
     gemini_tts_voice: str = "Kore"
@@ -72,6 +82,11 @@ class Settings(BaseSettings):
     @field_validator("gemini_base_url", mode="before")
     @classmethod
     def empty_gemini_base_url_is_none(cls, value: str | None) -> str | None:
+        return value or None
+
+    @field_validator("openai_base_url", mode="before")
+    @classmethod
+    def empty_openai_base_url_is_none(cls, value: str | None) -> str | None:
         return value or None
 
     @field_validator("tracing_endpoint", mode="before")
