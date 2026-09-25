@@ -181,6 +181,14 @@ Set `OMNI_ENVIRONMENT_WORKSPACE` to use another authorized synthetic workspace.
 No real client, laboratory, site, or regulatory data belongs in the repository.
 See [ADR 0009](docs/architecture/0009-environmental-mcp.md).
 
+The web app also includes a tenant-scoped **Environmental** workspace. Create a
+project, upload a laboratory XLSX workbook, inspect deterministic validation and
+screening observations, search the authorized demonstration references, and
+generate a cited report draft. Draft exports carry a visible warning until an
+owner, administrator, or reviewer records an approval rationale. Both DOCX and
+XLSX exports, source hashes, review decisions, and downloads are audited. See
+[ADR 0010](docs/architecture/0010-environmental-workspace.md).
+
 The legacy moderation proof of concept remains available through `uv run multimodal-moderation`:
 
 - Gradio chat: <http://localhost:7860>

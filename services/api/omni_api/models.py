@@ -1,7 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from services.api.omni_api.database import Base, TimestampMixin
@@ -859,3 +869,52 @@ class CallReconciliation(TimestampMixin, Base):
     complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     discrepancies: Mapped[list] = mapped_column(JSON, default=list)
     reconciled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class EnvironmentalProject(TimestampMixin, Base):
+    __tablename__ = "environmental_projects"
+    __table_args__ = (UniqueConstraint("tenant_id", "code"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    code: Mapped[str] = mapped_column(String(64))
+    jurisdiction: Mapped[str] = mapped_column(String(120), default="Unspecified")
+    status: Mapped[str] = mapped_column(String(30), default="active")
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+
+
+class EnvironmentalWorkbook(TimestampMixin, Base):
+    __tablename__ = "environmental_workbooks"
+    __table_args__ = (Index("ix_environmental_workbooks_project_created", "project_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("environmental_projects.id", ondelete="CASCADE"), index=True)
+    uploaded_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    filename: Mapped[str] = mapped_column(String(300))
+    content_type: Mapped[str] = mapped_column(String(150))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    object_key: Mapped[str] = mapped_column(String(500), unique=True)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(30))
+    validation: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class EnvironmentalReport(TimestampMixin, Base):
+    __tablename__ = "environmental_reports"
+    __table_args__ = (Index("ix_environmental_reports_project_created", "project_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("environmental_projects.id", ondelete="CASCADE"), index=True)
+    workbook_id: Mapped[str] = mapped_column(ForeignKey("environmental_workbooks.id", ondelete="RESTRICT"), index=True)
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    question: Mapped[str] = mapped_column(Text)
+    report_markdown: Mapped[str] = mapped_column(Text)
+    sources: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(30), default="draft")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    reviewed_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

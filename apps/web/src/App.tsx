@@ -10,6 +10,8 @@ import {
   ConversationMessage,
   CustomerCreate,
   DraftInvoice,
+  EnvironmentalReport,
+  EnvironmentalWorkbook,
   Invoice,
   Job,
   JobCreate,
@@ -69,7 +71,8 @@ type Section =
   | "assistant"
   | "automations"
   | "voice"
-  | "intelligence";
+  | "intelligence"
+  | "environmental";
 
 function useOnlineStatus() {
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -295,6 +298,12 @@ function AuthenticatedApp({
           >
             Intelligence
           </button>
+          <button
+            className={section === "environmental" ? "active" : ""}
+            onClick={() => setSection("environmental")}
+          >
+            Environmental <em>Lab</em>
+          </button>
         </nav>
       </aside>
       <div className="workspace">
@@ -354,6 +363,9 @@ function AuthenticatedApp({
           )}
           {pageTenant && section === "intelligence" && (
             <IntelligencePage api={api} tenantId={pageTenant} />
+          )}
+          {pageTenant && section === "environmental" && (
+            <EnvironmentalPage api={api} tenantId={pageTenant} />
           )}
         </fieldset>
       </div>
@@ -1898,6 +1910,458 @@ function ExtractionReviewCard({
         </button>
       </div>
     </article>
+  );
+}
+
+type ScreeningRow = {
+  sample_id?: string;
+  analyte?: string;
+  result?: number;
+  unit?: string;
+  criterion?: number | null;
+  criterion_unit?: string | null;
+  classification?: string;
+  source_uri?: string | null;
+};
+
+function EnvironmentalPage({
+  api,
+  tenantId,
+}: {
+  api: OmniApiClient;
+  tenantId: string;
+}) {
+  const cache = useQueryClient();
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedReportId, setSelectedReportId] = useState("");
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [jurisdiction, setJurisdiction] = useState("Western Australia");
+  const [question, setQuestion] = useState(
+    "Screen the laboratory results and identify matters requiring practitioner review.",
+  );
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [reviewReason, setReviewReason] = useState("");
+  const [reportEdits, setReportEdits] = useState<Record<string, string>>({});
+
+  const projects = useQuery({
+    queryKey: ["environment-projects", tenantId],
+    queryFn: () => api.environmentalProjects(),
+  });
+  const projectId = selectedProjectId || projects.data?.[0]?.id || "";
+  const workbooks = useQuery({
+    queryKey: ["environment-workbooks", tenantId, projectId],
+    queryFn: () => api.environmentalWorkbooks(projectId),
+    enabled: Boolean(projectId),
+  });
+  const reports = useQuery({
+    queryKey: ["environment-reports", tenantId, projectId],
+    queryFn: () => api.environmentalReports(projectId),
+    enabled: Boolean(projectId),
+  });
+  const search = useQuery({
+    queryKey: ["environment-search", tenantId, searchQuery],
+    queryFn: () => api.environmentalSearch(searchQuery),
+    enabled: searchQuery.length >= 3,
+  });
+  const activeWorkbook = workbooks.data?.[0] as
+    EnvironmentalWorkbook | undefined;
+  const activeReport = (reports.data?.find(
+    (report) => report.id === selectedReportId,
+  ) ?? reports.data?.[0]) as EnvironmentalReport | undefined;
+  const reportText = activeReport
+    ? (reportEdits[activeReport.id] ?? activeReport.report_markdown)
+    : "";
+  const screening = (activeWorkbook?.validation.screening ??
+    []) as ScreeningRow[];
+  const summary = (activeWorkbook?.validation.summary ?? {}) as Record<
+    string,
+    number
+  >;
+
+  const refreshProject = async () => {
+    await Promise.all([
+      cache.invalidateQueries({
+        queryKey: ["environment-workbooks", tenantId, projectId],
+      }),
+      cache.invalidateQueries({
+        queryKey: ["environment-reports", tenantId, projectId],
+      }),
+    ]);
+  };
+  const createProject = useMutation({
+    mutationFn: () =>
+      api.createEnvironmentalProject({ name, code, jurisdiction }),
+    onSuccess: async (project) => {
+      setName("");
+      setCode("");
+      setSelectedProjectId(project.id);
+      await cache.invalidateQueries({
+        queryKey: ["environment-projects", tenantId],
+      });
+    },
+  });
+  const upload = useMutation({
+    mutationFn: (file: File) =>
+      api.uploadEnvironmentalWorkbook(projectId, file),
+    onSuccess: refreshProject,
+  });
+  const draft = useMutation({
+    mutationFn: () =>
+      api.createEnvironmentalReport(projectId, {
+        workbook_id: activeWorkbook!.id,
+        question,
+      }),
+    onSuccess: async (report) => {
+      setSelectedReportId(report.id);
+      await refreshProject();
+    },
+  });
+  const review = useMutation({
+    mutationFn: (decision: "approve" | "reject") =>
+      api.reviewEnvironmentalReport(activeReport!.id, {
+        decision,
+        reason: reviewReason,
+        corrected_markdown:
+          reportText.trim() && reportText !== activeReport!.report_markdown
+            ? reportText
+            : null,
+      }),
+    onSuccess: async () => {
+      setReviewReason("");
+      await refreshProject();
+    },
+  });
+  const download = async (format: "docx" | "xlsx") => {
+    if (!activeReport) return;
+    const blob = await api.environmentalReportExport(activeReport.id, format);
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = `environmental-report-${activeReport.id.slice(0, 8)}.${format}`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const error =
+    createProject.error ?? upload.error ?? draft.error ?? review.error ?? null;
+
+  return (
+    <main className="environment-page">
+      <section className="page-heading">
+        <div>
+          <span className="eyebrow">Governed environmental workflow</span>
+          <h1>Environmental workspace</h1>
+          <p>
+            Validate laboratory data, retrieve authorized references, draft
+            cited screening summaries, and preserve a human approval trail.
+          </p>
+        </div>
+        <span className="environment-demo-label">
+          Synthetic demonstration data
+        </span>
+      </section>
+      {error && <div className="error-banner">{error.message}</div>}
+      <section className="environment-layout">
+        <div className="environment-column">
+          <article className="environment-card">
+            <span className="eyebrow">1 · Project context</span>
+            <h2>Select or create a project</h2>
+            <label>
+              Active project
+              <select
+                value={projectId}
+                onChange={(event) => {
+                  setSelectedProjectId(event.target.value);
+                  setSelectedReportId("");
+                }}
+              >
+                {!projects.data?.length && (
+                  <option value="">No projects yet</option>
+                )}
+                {projects.data?.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.code} — {project.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <form
+              className="environment-project-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                createProject.mutate();
+              }}
+            >
+              <input
+                aria-label="Project name"
+                placeholder="Project name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                required
+              />
+              <input
+                aria-label="Project code"
+                placeholder="lowercase-project-code"
+                pattern="[a-z0-9][a-z0-9-]{0,63}"
+                value={code}
+                onChange={(event) => setCode(event.target.value.toLowerCase())}
+                required
+              />
+              <input
+                aria-label="Jurisdiction"
+                placeholder="Jurisdiction"
+                value={jurisdiction}
+                onChange={(event) => setJurisdiction(event.target.value)}
+                required
+              />
+              <button disabled={createProject.isPending}>Create project</button>
+            </form>
+          </article>
+
+          <article className="environment-card">
+            <span className="eyebrow">2 · Laboratory validation</span>
+            <h2>Upload an XLSX workbook</h2>
+            <p>
+              Required columns: sample_id, analyte, result, unit, and
+              reporting_limit. The original file and SHA-256 digest are
+              retained.
+            </p>
+            <input
+              aria-label="Upload laboratory workbook"
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              disabled={!projectId || upload.isPending}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) upload.mutate(file);
+                event.target.value = "";
+              }}
+            />
+            {activeWorkbook && (
+              <div className="environment-validation">
+                <div className="card-title-row">
+                  <strong>{activeWorkbook.filename}</strong>
+                  <span className={`status-pill ${activeWorkbook.status}`}>
+                    {activeWorkbook.status}
+                  </span>
+                </div>
+                <div className="environment-metrics">
+                  <Metric
+                    label="Rows"
+                    value={Number(activeWorkbook.validation.row_count ?? 0)}
+                  />
+                  {Object.entries(summary).map(([label, value]) => (
+                    <Metric
+                      key={label}
+                      label={label.replaceAll("_", " ")}
+                      value={value}
+                    />
+                  ))}
+                </div>
+                {(
+                  activeWorkbook.validation.errors as string[] | undefined
+                )?.map((message) => (
+                  <div className="error-banner" key={message}>
+                    {message}
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+
+          {screening.length > 0 && (
+            <article className="environment-card environment-results">
+              <h2>Screening observations</h2>
+              <div className="environment-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Sample</th>
+                      <th>Analyte</th>
+                      <th>Result</th>
+                      <th>Criterion</th>
+                      <th>Classification</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {screening.map((row, index) => (
+                      <tr key={`${row.sample_id}-${row.analyte}-${index}`}>
+                        <td>{row.sample_id}</td>
+                        <td>{row.analyte}</td>
+                        <td>
+                          {row.result} {row.unit}
+                        </td>
+                        <td>
+                          {row.criterion ?? "—"} {row.criterion_unit}
+                        </td>
+                        <td>
+                          <span className={`status-pill ${row.classification}`}>
+                            {row.classification?.replaceAll("_", " ")}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          )}
+        </div>
+
+        <aside className="environment-column">
+          <article className="environment-card">
+            <span className="eyebrow">Authorized knowledge</span>
+            <h2>Search references</h2>
+            <form
+              className="environment-search"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setSearchQuery(searchInput.trim());
+              }}
+            >
+              <input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Laboratory screening review…"
+                minLength={3}
+                required
+              />
+              <button>Search</button>
+            </form>
+            {search.data?.abstained && (
+              <p>No authorized reference matched. The system abstained.</p>
+            )}
+            {search.data?.matches.map((match, index) => (
+              <div
+                className="environment-source"
+                key={String(match.source_uri ?? index)}
+              >
+                <strong>{String(match.title ?? "Reference")}</strong>
+                <p>{String(match.snippet ?? "")}</p>
+                <code>{String(match.source_uri ?? "")}</code>
+              </div>
+            ))}
+          </article>
+
+          <article className="environment-card">
+            <span className="eyebrow">3 · Draft and review</span>
+            <h2>Prepare screening report</h2>
+            <label>
+              Review question
+              <textarea
+                rows={4}
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+              />
+            </label>
+            <button
+              disabled={
+                !activeWorkbook ||
+                activeWorkbook.status !== "validated" ||
+                draft.isPending ||
+                question.length < 3
+              }
+              onClick={() => draft.mutate()}
+            >
+              {draft.isPending ? "Drafting…" : "Create cited draft"}
+            </button>
+            {reports.data && reports.data.length > 0 && (
+              <label>
+                Report version
+                <select
+                  value={activeReport?.id ?? ""}
+                  onChange={(event) => setSelectedReportId(event.target.value)}
+                >
+                  {reports.data.map((report) => (
+                    <option key={report.id} value={report.id}>
+                      {new Date(report.created_at).toLocaleString()} ·{" "}
+                      {report.status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {activeReport && (
+              <div className="environment-report">
+                <div className="card-title-row">
+                  <strong>Report v{activeReport.version}</strong>
+                  <span className={`status-pill ${activeReport.status}`}>
+                    {activeReport.status}
+                  </span>
+                </div>
+                {activeReport.status !== "approved" && (
+                  <div className="environment-draft-warning">
+                    DRAFT — not approved for client or regulatory use
+                  </div>
+                )}
+                <label>
+                  Review and correct draft
+                  <textarea
+                    className="environment-report-editor"
+                    rows={18}
+                    value={reportText}
+                    onChange={(event) =>
+                      setReportEdits((current) => ({
+                        ...current,
+                        [activeReport.id]: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Reviewer rationale
+                  <textarea
+                    rows={3}
+                    value={reviewReason}
+                    onChange={(event) => setReviewReason(event.target.value)}
+                    placeholder="Record checks performed and the reason for this decision."
+                  />
+                </label>
+                <div className="button-row">
+                  <button
+                    disabled={
+                      reviewReason.trim().length < 3 || review.isPending
+                    }
+                    onClick={() => review.mutate("approve")}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="secondary"
+                    disabled={
+                      reviewReason.trim().length < 3 || review.isPending
+                    }
+                    onClick={() => review.mutate("reject")}
+                  >
+                    Reject
+                  </button>
+                </div>
+                <div className="button-row">
+                  <button
+                    className="secondary"
+                    onClick={() => void download("docx")}
+                  >
+                    Download DOCX
+                  </button>
+                  <button
+                    className="secondary"
+                    onClick={() => void download("xlsx")}
+                  >
+                    Download XLSX
+                  </button>
+                </div>
+              </div>
+            )}
+          </article>
+        </aside>
+      </section>
+      <p className="environment-disclaimer">
+        Portfolio demonstration only. A qualified environmental practitioner
+        must review all screening observations before any client or regulatory
+        use.
+      </p>
+    </main>
   );
 }
 

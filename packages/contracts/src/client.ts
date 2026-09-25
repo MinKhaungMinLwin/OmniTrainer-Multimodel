@@ -77,6 +77,20 @@ export type ReconciliationCreate =
   components["schemas"]["ReconciliationCreate"];
 export type Reconciliation = components["schemas"]["ReconciliationRead"];
 export type MetricDefinition = components["schemas"]["MetricDefinition"];
+export type EnvironmentalProject =
+  components["schemas"]["EnvironmentalProjectRead"];
+export type EnvironmentalProjectCreate =
+  components["schemas"]["EnvironmentalProjectCreate"];
+export type EnvironmentalWorkbook =
+  components["schemas"]["EnvironmentalWorkbookRead"];
+export type EnvironmentalReport =
+  components["schemas"]["EnvironmentalReportRead"];
+export type EnvironmentalReportCreate =
+  components["schemas"]["EnvironmentalReportCreate"];
+export type EnvironmentalReportReview =
+  components["schemas"]["EnvironmentalReportReview"];
+export type EnvironmentalSearchResult =
+  components["schemas"]["EnvironmentalSearchResult"];
 
 export interface AiToolDefinition {
   name: string;
@@ -830,6 +844,99 @@ export class OmniApiClient {
       true,
       true,
     );
+  }
+
+  environmentalProjects(): Promise<EnvironmentalProject[]> {
+    return this.request("/api/v1/environment/projects", {}, true, true);
+  }
+
+  createEnvironmentalProject(
+    project: EnvironmentalProjectCreate,
+  ): Promise<EnvironmentalProject> {
+    return this.request(
+      "/api/v1/environment/projects",
+      { method: "POST", body: JSON.stringify(project) },
+      true,
+      true,
+    );
+  }
+
+  environmentalWorkbooks(projectId: string): Promise<EnvironmentalWorkbook[]> {
+    return this.request(
+      `/api/v1/environment/projects/${projectId}/workbooks`,
+      {},
+      true,
+      true,
+    );
+  }
+
+  uploadEnvironmentalWorkbook(
+    projectId: string,
+    file: File,
+  ): Promise<EnvironmentalWorkbook> {
+    const form = new FormData();
+    form.append("file", file);
+    return this.request(
+      `/api/v1/environment/projects/${projectId}/workbooks`,
+      { method: "POST", body: form },
+      true,
+      true,
+    );
+  }
+
+  environmentalSearch(query: string): Promise<EnvironmentalSearchResult> {
+    return this.request(
+      `/api/v1/environment/documents/search?q=${encodeURIComponent(query)}`,
+      {},
+      true,
+      true,
+    );
+  }
+
+  environmentalReports(projectId: string): Promise<EnvironmentalReport[]> {
+    return this.request(
+      `/api/v1/environment/projects/${projectId}/reports`,
+      {},
+      true,
+      true,
+    );
+  }
+
+  createEnvironmentalReport(
+    projectId: string,
+    report: EnvironmentalReportCreate,
+  ): Promise<EnvironmentalReport> {
+    return this.request(
+      `/api/v1/environment/projects/${projectId}/reports`,
+      { method: "POST", body: JSON.stringify(report) },
+      true,
+      true,
+    );
+  }
+
+  reviewEnvironmentalReport(
+    reportId: string,
+    review: EnvironmentalReportReview,
+  ): Promise<EnvironmentalReport> {
+    return this.request(
+      `/api/v1/environment/reports/${reportId}/review`,
+      { method: "POST", body: JSON.stringify(review) },
+      true,
+      true,
+    );
+  }
+
+  async environmentalReportExport(
+    reportId: string,
+    format: "docx" | "xlsx",
+  ): Promise<Blob> {
+    const response = await this.fetchResponse(
+      `/api/v1/environment/reports/${reportId}/export.${format}`,
+      {},
+      true,
+      true,
+    );
+    return response.blob();
   }
 
   async streamAgentRun(
