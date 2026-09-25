@@ -3759,29 +3759,33 @@ function AssistantPage({
           + New conversation
         </button>
         <div className="conversation-list">
-          {conversations.data?.map((conversation) => (
-            <button
-              key={conversation.id}
-              className={
-                conversation.id === selectedConversationId ? "selected" : ""
-              }
-              onClick={() => {
-                setConversationId(conversation.id);
-                setActiveRun(null);
-                setEvents([]);
-              }}
-            >
-              {conversation.title}
-              <small>
-                {new Date(conversation.updated_at).toLocaleDateString()}
-              </small>
-              {traceId && traceUrl && (
-                <a href={traceUrl} target="_blank" rel="noreferrer">
-                  Trace {traceId.slice(0, 8)} ↗
-                </a>
-              )}
-            </button>
-          ))}
+          {conversations.data?.map((conversation) => {
+            const selected = conversation.id === selectedConversationId;
+            return (
+              <div
+                key={conversation.id}
+                className={`conversation-list-item${selected ? " selected" : ""}`}
+              >
+                <button
+                  onClick={() => {
+                    setConversationId(conversation.id);
+                    setActiveRun(null);
+                    setEvents([]);
+                  }}
+                >
+                  {conversation.title}
+                  <small>
+                    {new Date(conversation.updated_at).toLocaleDateString()}
+                  </small>
+                </button>
+                {selected && traceId && traceUrl && (
+                  <a href={traceUrl} target="_blank" rel="noreferrer">
+                    Trace {traceId.slice(0, 8)} ↗
+                  </a>
+                )}
+              </div>
+            );
+          })}
         </div>
         <button
           className="secondary"

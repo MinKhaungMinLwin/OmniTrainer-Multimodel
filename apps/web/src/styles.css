@@ -517,6 +517,7 @@ article > span {
   min-height: 0;
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 .conversation-rail {
@@ -536,11 +537,18 @@ article > span {
   flex: 1;
   overflow-y: auto;
 }
-.conversation-list button {
+.conversation-list-item {
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+  overflow: hidden;
+  border-radius: 12px;
+}
+.conversation-list-item > button {
   display: grid;
   gap: 5px;
   width: 100%;
-  padding: 11px;
+  padding: 7px;
   overflow: hidden;
   color: #405049;
   background: transparent;
@@ -548,10 +556,19 @@ article > span {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.conversation-list button.selected {
+.conversation-list-item.selected {
   color: #164f3b;
   background: white;
   box-shadow: 0 1px 4px #13231d12;
+}
+.conversation-list-item.selected > button {
+  color: #164f3b;
+}
+.conversation-list-item > a {
+  padding: 2px 7px 6px;
+  color: #176b4d;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 .conversation-list small,
 .tool-card-heading small,
