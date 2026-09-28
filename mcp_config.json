@@ -1,0 +1,15 @@
+{
+"mcpServers": {
+  "omni-environment": {
+    "command": "/Users/mkml/.local/bin/uv",
+    "args": [
+      "--directory",
+      "/Users/mkml/Documents/work/Udacity/OmniTrainer-Multimodel",
+      "run",
+      "python",
+      "-m",
+      "services.environment_mcp.server"
+    ]
+  }
+}
+}
