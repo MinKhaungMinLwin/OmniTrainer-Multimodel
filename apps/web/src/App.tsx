@@ -61,6 +61,12 @@ const customerSchema = z.object({
   notes: z.string().max(5000).optional(),
 });
 
+// These operational consoles are implemented, but they are intentionally kept
+// out of the focused environmental demo navigation. Re-enable them for an
+// operations deployment with VITE_ENABLE_ADVANCED_MODULES=true.
+const advancedModulesEnabled =
+  import.meta.env.VITE_ENABLE_ADVANCED_MODULES === "true";
+
 type CustomerForm = z.infer<typeof customerSchema>;
 type Section =
   | "customers"
@@ -280,24 +286,28 @@ function AuthenticatedApp({
           >
             Assistant <em>AI</em>
           </button>
-          <button
-            className={section === "automations" ? "active" : ""}
-            onClick={() => setSection("automations")}
-          >
-            Automations
-          </button>
-          <button
-            className={section === "voice" ? "active" : ""}
-            onClick={() => setSection("voice")}
-          >
-            Voice <em>Pilot</em>
-          </button>
-          <button
-            className={section === "intelligence" ? "active" : ""}
-            onClick={() => setSection("intelligence")}
-          >
-            Intelligence
-          </button>
+          {advancedModulesEnabled && (
+            <>
+              <button
+                className={section === "automations" ? "active" : ""}
+                onClick={() => setSection("automations")}
+              >
+                Automations
+              </button>
+              <button
+                className={section === "voice" ? "active" : ""}
+                onClick={() => setSection("voice")}
+              >
+                Voice <em>Pilot</em>
+              </button>
+              <button
+                className={section === "intelligence" ? "active" : ""}
+                onClick={() => setSection("intelligence")}
+              >
+                Intelligence
+              </button>
+            </>
+          )}
           <button
             className={section === "environmental" ? "active" : ""}
             onClick={() => setSection("environmental")}
@@ -355,15 +365,19 @@ function AuthenticatedApp({
           {pageTenant && section === "assistant" && (
             <AssistantPage api={api} tenantId={pageTenant} />
           )}
-          {pageTenant && section === "automations" && (
-            <AutomationsPage api={api} tenantId={pageTenant} />
-          )}
-          {pageTenant && section === "voice" && (
+          {advancedModulesEnabled &&
+            pageTenant &&
+            section === "automations" && (
+              <AutomationsPage api={api} tenantId={pageTenant} />
+            )}
+          {advancedModulesEnabled && pageTenant && section === "voice" && (
             <VoicePage api={api} tenantId={pageTenant} />
           )}
-          {pageTenant && section === "intelligence" && (
-            <IntelligencePage api={api} tenantId={pageTenant} />
-          )}
+          {advancedModulesEnabled &&
+            pageTenant &&
+            section === "intelligence" && (
+              <IntelligencePage api={api} tenantId={pageTenant} />
+            )}
           {pageTenant && section === "environmental" && (
             <EnvironmentalPage api={api} tenantId={pageTenant} />
           )}
