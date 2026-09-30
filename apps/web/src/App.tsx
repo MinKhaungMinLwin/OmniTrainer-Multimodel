@@ -207,7 +207,7 @@ function AuthenticatedApp({
   onTenantChange: (id: string) => void;
   onSignOut: () => void;
 }) {
-  const [section, setSection] = useState<Section>("customers");
+  const [section, setSection] = useState<Section>("environmental");
   const online = useOnlineStatus();
   const tenants = useQuery({
     queryKey: ["tenants"],
@@ -248,43 +248,80 @@ function AuthenticatedApp({
   return (
     <div className="app-shell">
       <aside>
-        <div className="brand">OM</div>
+        <div className="brand">
+          <span className="brand-mark">OM</span>
+          <span className="brand-copy">
+            <strong>Omni Model</strong>
+            <small>Environmental AI</small>
+          </span>
+        </div>
         <nav aria-label="Primary">
+          <span className="nav-section-label">Workspace</span>
           <button
-            className={section === "customers" ? "active" : ""}
-            onClick={() => setSection("customers")}
+            className={section === "environmental" ? "active" : ""}
+            onClick={() => setSection("environmental")}
           >
-            Customers
-          </button>
-          <button
-            className={section === "jobs" ? "active" : ""}
-            onClick={() => setSection("jobs")}
-          >
-            Jobs
-          </button>
-          <button
-            className={section === "schedule" ? "active" : ""}
-            onClick={() => setSection("schedule")}
-          >
-            Schedule
-          </button>
-          <button
-            className={section === "invoices" ? "active" : ""}
-            onClick={() => setSection("invoices")}
-          >
-            Invoices
-          </button>
-          <button
-            className={section === "team" ? "active" : ""}
-            onClick={() => setSection("team")}
-          >
-            Team
+            <span className="nav-icon" aria-hidden="true">
+              E
+            </span>
+            <span className="nav-label">Environmental</span>
+            <em>Lab</em>
           </button>
           <button
             className={section === "assistant" ? "active" : ""}
             onClick={() => setSection("assistant")}
           >
-            Assistant <em>AI</em>
+            <span className="nav-icon" aria-hidden="true">
+              ✦
+            </span>
+            <span className="nav-label">Omni Agent</span>
+            <em>AI</em>
+          </button>
+          <span className="nav-section-label">Operations</span>
+          <button
+            className={section === "customers" ? "active" : ""}
+            onClick={() => setSection("customers")}
+          >
+            <span className="nav-icon" aria-hidden="true">
+              C
+            </span>
+            <span className="nav-label">Customers</span>
+          </button>
+          <button
+            className={section === "jobs" ? "active" : ""}
+            onClick={() => setSection("jobs")}
+          >
+            <span className="nav-icon" aria-hidden="true">
+              J
+            </span>
+            <span className="nav-label">Jobs</span>
+          </button>
+          <button
+            className={section === "schedule" ? "active" : ""}
+            onClick={() => setSection("schedule")}
+          >
+            <span className="nav-icon" aria-hidden="true">
+              S
+            </span>
+            <span className="nav-label">Schedule</span>
+          </button>
+          <button
+            className={section === "invoices" ? "active" : ""}
+            onClick={() => setSection("invoices")}
+          >
+            <span className="nav-icon" aria-hidden="true">
+              I
+            </span>
+            <span className="nav-label">Invoices</span>
+          </button>
+          <button
+            className={section === "team" ? "active" : ""}
+            onClick={() => setSection("team")}
+          >
+            <span className="nav-icon" aria-hidden="true">
+              T
+            </span>
+            <span className="nav-label">Team</span>
           </button>
           {advancedModulesEnabled && (
             <>
@@ -308,13 +345,11 @@ function AuthenticatedApp({
               </button>
             </>
           )}
-          <button
-            className={section === "environmental" ? "active" : ""}
-            onClick={() => setSection("environmental")}
-          >
-            Environmental <em>Lab</em>
-          </button>
         </nav>
+        <div className="sidebar-footnote">
+          <span />
+          Governed demo workspace
+        </div>
       </aside>
       <div className="workspace">
         {!online && (
@@ -323,17 +358,20 @@ function AuthenticatedApp({
           </div>
         )}
         <header>
-          <select
-            aria-label="Workspace"
-            value={activeTenant ?? ""}
-            onChange={(event) => onTenantChange(event.target.value)}
-          >
-            {tenants.data.map((tenant: Tenant) => (
-              <option key={tenant.id} value={tenant.id}>
-                {tenant.name}
-              </option>
-            ))}
-          </select>
+          <div className="workspace-context">
+            <span>Active workspace</span>
+            <select
+              aria-label="Workspace"
+              value={activeTenant ?? ""}
+              onChange={(event) => onTenantChange(event.target.value)}
+            >
+              {tenants.data.map((tenant: Tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className={`connection ${health.isError ? "offline" : ""}`}>
             <span />
             {health.isError
@@ -2075,6 +2113,29 @@ function EnvironmentalPage({
           Synthetic demonstration data
         </span>
       </section>
+      <div className="environment-workflow-strip" aria-label="Workflow stages">
+        <div className="active">
+          <span>01</span>
+          <p>
+            <strong>Validate</strong>
+            Laboratory workbook
+          </p>
+        </div>
+        <div>
+          <span>02</span>
+          <p>
+            <strong>Retrieve</strong>
+            Authorized evidence
+          </p>
+        </div>
+        <div>
+          <span>03</span>
+          <p>
+            <strong>Review</strong>
+            Cited screening draft
+          </p>
+        </div>
+      </div>
       {error && <div className="error-banner">{error.message}</div>}
       <section className="environment-layout">
         <div className="environment-column">
@@ -3482,7 +3543,7 @@ function AutomationsPage({
 
 function Metric({ label, value }: { label: string; value: number | string }) {
   return (
-    <div>
+    <div className="metric">
       <strong>{value}</strong>
       <span>{label}</span>
     </div>
