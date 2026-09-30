@@ -29,11 +29,14 @@ async function apiSession(
 async function signIn(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("heading", { name: "Customers" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Environmental workspace" }),
+  ).toBeVisible();
 }
 
 test("completes the customer to issued invoice workflow", async ({ page }) => {
   await signIn(page);
+  await page.getByRole("button", { name: "Customers", exact: true }).click();
   const suffix = Date.now();
   await page.getByRole("button", { name: /new customer/i }).click();
   await page.getByPlaceholder("Acme Services").fill(`E2E Customer ${suffix}`);
@@ -52,7 +55,13 @@ test("completes the customer to issued invoice workflow", async ({ page }) => {
   const job = page
     .getByRole("article")
     .filter({ hasText: `E2E Job ${suffix}` });
+  await expect(job).toContainText(`E2E Customer ${suffix}`);
   await expect(job).toContainText("draft");
+  await job.getByRole("button", { name: "Details" }).click();
+  await expect(page.getByRole("dialog", { name: "Job details" })).toContainText(
+    `Customer: E2E Customer ${suffix}`,
+  );
+  await page.getByRole("button", { name: "Close job details" }).click();
   await job.getByRole("button", { name: "Schedule" }).click();
   const start = new Date(Date.now() + 48 * 60 * 60 * 1000);
   const end = new Date(start.getTime() + 60 * 60 * 1000);
@@ -96,6 +105,7 @@ test("has no serious accessibility violations and exposes offline mode", async (
       ["serious", "critical"].includes(item.impact ?? ""),
     ),
   ).toEqual([]);
+  await page.getByRole("button", { name: "Customers", exact: true }).click();
   await context.setOffline(true);
   await expect(page.getByRole("status")).toContainText("Offline");
   await expect(

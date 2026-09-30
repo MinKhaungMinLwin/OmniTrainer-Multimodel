@@ -105,9 +105,19 @@ def test_copilot_creates_customers_jobs_and_team_members_with_human_review(tmp_p
         assert job_run["approvals"][0]["proposed_args"]["customer_name"] == "James X"
         approved_job = approve(client, headers, job_run)
         assert approved_job["run"]["status"] == "completed"
-        assert any(
-            item["title"] == "Install smart thermostat"
+        created_job = next(
+            item
             for item in client.get("/api/v1/jobs", headers=headers).json()["items"]
+            if item["title"] == "Install smart thermostat"
+        )
+        created_customer = next(
+            item
+            for item in client.get("/api/v1/customers", headers=headers).json()["items"]
+            if item["name"] == "James X"
+        )
+        assert created_job["customer_id"] == created_customer["id"]
+        assert approved_job["tools"][0]["output"]["summary"] == (
+            "Created draft job “Install smart thermostat” for customer “James X”."
         )
 
         schedule_run = client.post(
