@@ -61,6 +61,12 @@ const customerSchema = z.object({
   notes: z.string().max(5000).optional(),
 });
 
+// These operational consoles are implemented, but they are intentionally kept
+// out of the focused environmental demo navigation. Re-enable them for an
+// operations deployment with VITE_ENABLE_ADVANCED_MODULES=true.
+const advancedModulesEnabled =
+  import.meta.env.VITE_ENABLE_ADVANCED_MODULES === "true";
+
 type CustomerForm = z.infer<typeof customerSchema>;
 type Section =
   | "customers"
@@ -201,7 +207,7 @@ function AuthenticatedApp({
   onTenantChange: (id: string) => void;
   onSignOut: () => void;
 }) {
-  const [section, setSection] = useState<Section>("customers");
+  const [section, setSection] = useState<Section>("environmental");
   const online = useOnlineStatus();
   const tenants = useQuery({
     queryKey: ["tenants"],
@@ -242,69 +248,108 @@ function AuthenticatedApp({
   return (
     <div className="app-shell">
       <aside>
-        <div className="brand">OM</div>
+        <div className="brand">
+          <span className="brand-mark">OM</span>
+          <span className="brand-copy">
+            <strong>Omni Model</strong>
+            <small>Environmental AI</small>
+          </span>
+        </div>
         <nav aria-label="Primary">
+          <span className="nav-section-label">Workspace</span>
           <button
-            className={section === "customers" ? "active" : ""}
-            onClick={() => setSection("customers")}
+            className={section === "environmental" ? "active" : ""}
+            onClick={() => setSection("environmental")}
           >
-            Customers
-          </button>
-          <button
-            className={section === "jobs" ? "active" : ""}
-            onClick={() => setSection("jobs")}
-          >
-            Jobs
-          </button>
-          <button
-            className={section === "schedule" ? "active" : ""}
-            onClick={() => setSection("schedule")}
-          >
-            Schedule
-          </button>
-          <button
-            className={section === "invoices" ? "active" : ""}
-            onClick={() => setSection("invoices")}
-          >
-            Invoices
-          </button>
-          <button
-            className={section === "team" ? "active" : ""}
-            onClick={() => setSection("team")}
-          >
-            Team
+            <span className="nav-icon" aria-hidden="true">
+              E
+            </span>
+            <span className="nav-label">Environmental</span>
+            <em>Lab</em>
           </button>
           <button
             className={section === "assistant" ? "active" : ""}
             onClick={() => setSection("assistant")}
           >
-            Assistant <em>AI</em>
+            <span className="nav-icon" aria-hidden="true">
+              ✦
+            </span>
+            <span className="nav-label">Omni Agent</span>
+            <em>AI</em>
+          </button>
+          <span className="nav-section-label">Operations</span>
+          <button
+            className={section === "customers" ? "active" : ""}
+            onClick={() => setSection("customers")}
+          >
+            <span className="nav-icon" aria-hidden="true">
+              C
+            </span>
+            <span className="nav-label">Customers</span>
           </button>
           <button
-            className={section === "automations" ? "active" : ""}
-            onClick={() => setSection("automations")}
+            className={section === "jobs" ? "active" : ""}
+            onClick={() => setSection("jobs")}
           >
-            Automations
+            <span className="nav-icon" aria-hidden="true">
+              J
+            </span>
+            <span className="nav-label">Jobs</span>
           </button>
           <button
-            className={section === "voice" ? "active" : ""}
-            onClick={() => setSection("voice")}
+            className={section === "schedule" ? "active" : ""}
+            onClick={() => setSection("schedule")}
           >
-            Voice <em>Pilot</em>
+            <span className="nav-icon" aria-hidden="true">
+              S
+            </span>
+            <span className="nav-label">Schedule</span>
           </button>
           <button
-            className={section === "intelligence" ? "active" : ""}
-            onClick={() => setSection("intelligence")}
+            className={section === "invoices" ? "active" : ""}
+            onClick={() => setSection("invoices")}
           >
-            Intelligence
+            <span className="nav-icon" aria-hidden="true">
+              I
+            </span>
+            <span className="nav-label">Invoices</span>
           </button>
           <button
-            className={section === "environmental" ? "active" : ""}
-            onClick={() => setSection("environmental")}
+            className={section === "team" ? "active" : ""}
+            onClick={() => setSection("team")}
           >
-            Environmental <em>Lab</em>
+            <span className="nav-icon" aria-hidden="true">
+              T
+            </span>
+            <span className="nav-label">Team</span>
           </button>
+          {advancedModulesEnabled && (
+            <>
+              <button
+                className={section === "automations" ? "active" : ""}
+                onClick={() => setSection("automations")}
+              >
+                Automations
+              </button>
+              <button
+                className={section === "voice" ? "active" : ""}
+                onClick={() => setSection("voice")}
+              >
+                Voice <em>Pilot</em>
+              </button>
+              <button
+                className={section === "intelligence" ? "active" : ""}
+                onClick={() => setSection("intelligence")}
+              >
+                Intelligence
+              </button>
+            </>
+          )}
         </nav>
+        <div className="sidebar-footnote">
+          <span />
+          Governed demo workspace
+        </div>
       </aside>
       <div className="workspace">
         {!online && (
@@ -313,17 +358,20 @@ function AuthenticatedApp({
           </div>
         )}
         <header>
-          <select
-            aria-label="Workspace"
-            value={activeTenant ?? ""}
-            onChange={(event) => onTenantChange(event.target.value)}
-          >
-            {tenants.data.map((tenant: Tenant) => (
-              <option key={tenant.id} value={tenant.id}>
-                {tenant.name}
-              </option>
-            ))}
-          </select>
+          <div className="workspace-context">
+            <span>Active workspace</span>
+            <select
+              aria-label="Workspace"
+              value={activeTenant ?? ""}
+              onChange={(event) => onTenantChange(event.target.value)}
+            >
+              {tenants.data.map((tenant: Tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className={`connection ${health.isError ? "offline" : ""}`}>
             <span />
             {health.isError
@@ -355,15 +403,19 @@ function AuthenticatedApp({
           {pageTenant && section === "assistant" && (
             <AssistantPage api={api} tenantId={pageTenant} />
           )}
-          {pageTenant && section === "automations" && (
-            <AutomationsPage api={api} tenantId={pageTenant} />
-          )}
-          {pageTenant && section === "voice" && (
+          {advancedModulesEnabled &&
+            pageTenant &&
+            section === "automations" && (
+              <AutomationsPage api={api} tenantId={pageTenant} />
+            )}
+          {advancedModulesEnabled && pageTenant && section === "voice" && (
             <VoicePage api={api} tenantId={pageTenant} />
           )}
-          {pageTenant && section === "intelligence" && (
-            <IntelligencePage api={api} tenantId={pageTenant} />
-          )}
+          {advancedModulesEnabled &&
+            pageTenant &&
+            section === "intelligence" && (
+              <IntelligencePage api={api} tenantId={pageTenant} />
+            )}
           {pageTenant && section === "environmental" && (
             <EnvironmentalPage api={api} tenantId={pageTenant} />
           )}
@@ -532,6 +584,12 @@ function CustomerDetailPanel({
     queryKey: ["customer", tenantId, customerId],
     queryFn: () => api.customer(customerId),
   });
+  const jobs = useQuery({
+    queryKey: ["jobs", tenantId],
+    queryFn: () => api.jobs(),
+  });
+  const customerJobs =
+    jobs.data?.items.filter((job) => job.customer_id === customerId) ?? [];
   const refresh = async () => {
     await Promise.all([
       cache.invalidateQueries({ queryKey: ["customer", tenantId, customerId] }),
@@ -664,6 +722,15 @@ function CustomerDetailPanel({
                 <button>Add</button>
               </form>
             </DetailCollection>
+            <DetailCollection title="Jobs" empty="No jobs for this customer.">
+              {customerJobs.map((job) => (
+                <p key={job.id}>
+                  <strong>{job.title}</strong>
+                  <br />
+                  {job.status} · Version {job.version}
+                </p>
+              ))}
+            </DetailCollection>
             <DetailCollection title="Activity" empty="No activity yet.">
               {detail.data.activity.map((item) => (
                 <p key={item.id}>
@@ -717,6 +784,9 @@ function JobsPage({ api, tenantId }: { api: OmniApiClient; tenantId: string }) {
     queryKey: ["jobs", tenantId],
     queryFn: () => api.jobs(),
   });
+  const customerNames = new Map(
+    customers.data?.items.map((customer) => [customer.id, customer.name]) ?? [],
+  );
   const selectedCustomerId = customerId || customers.data?.items[0]?.id || "";
   const customerDetail = useQuery({
     queryKey: ["customer", tenantId, selectedCustomerId],
@@ -867,7 +937,8 @@ function JobsPage({ api, tenantId }: { api: OmniApiClient; tenantId: string }) {
             <div>
               <h2>{job.title}</h2>
               <p>
-                Version {job.version} · {job.status}
+                {customerNames.get(job.customer_id) ?? "Unknown customer"}
+                {" · "}Version {job.version} · {job.status}
               </p>
             </div>
             <div className="row-actions">
@@ -893,6 +964,9 @@ function JobsPage({ api, tenantId }: { api: OmniApiClient; tenantId: string }) {
         <JobDetailPanel
           api={api}
           job={selectedJob}
+          customerName={
+            customerNames.get(selectedJob.customer_id) ?? "Unknown customer"
+          }
           tenantId={tenantId}
           onClose={() => setSelectedJob(null)}
         />
@@ -904,11 +978,13 @@ function JobsPage({ api, tenantId }: { api: OmniApiClient; tenantId: string }) {
 function JobDetailPanel({
   api,
   job,
+  customerName,
   tenantId,
   onClose,
 }: {
   api: OmniApiClient;
   job: Job;
+  customerName: string;
   tenantId: string;
   onClose: () => void;
 }) {
@@ -969,6 +1045,9 @@ function JobDetailPanel({
         </button>
         <span className="eyebrow">{job.status}</span>
         <h1>{job.title}</h1>
+        <p>
+          Customer: <strong>{customerName}</strong>
+        </p>
         <p>{job.description ?? "No job description."}</p>
         <DetailCollection title="Notes" empty="No notes yet.">
           {notes.data?.map((note) => (
@@ -2061,6 +2140,29 @@ function EnvironmentalPage({
           Synthetic demonstration data
         </span>
       </section>
+      <div className="environment-workflow-strip" aria-label="Workflow stages">
+        <div className="active">
+          <span>01</span>
+          <p>
+            <strong>Validate</strong>
+            Laboratory workbook
+          </p>
+        </div>
+        <div>
+          <span>02</span>
+          <p>
+            <strong>Retrieve</strong>
+            Authorized evidence
+          </p>
+        </div>
+        <div>
+          <span>03</span>
+          <p>
+            <strong>Review</strong>
+            Cited screening draft
+          </p>
+        </div>
+      </div>
       {error && <div className="error-banner">{error.message}</div>}
       <section className="environment-layout">
         <div className="environment-column">
@@ -3468,7 +3570,7 @@ function AutomationsPage({
 
 function Metric({ label, value }: { label: string; value: number | string }) {
   return (
-    <div>
+    <div className="metric">
       <strong>{value}</strong>
       <span>{label}</span>
     </div>

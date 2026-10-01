@@ -24,7 +24,9 @@ async function apiSession(
 async function signIn(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByRole("heading", { name: "Customers" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Environmental workspace" }),
+  ).toBeVisible();
 }
 
 test("streams cited answers and reviews an edited write proposal", async ({
@@ -44,7 +46,7 @@ test("streams cited answers and reviews an edited write proposal", async ({
   const customer = await customerResponse.json();
 
   await signIn(page);
-  await page.getByRole("button", { name: "Assistant" }).click();
+  await page.getByRole("button", { name: "Omni Agent" }).click();
   await page.getByRole("button", { name: /new conversation/i }).click();
   await page.getByRole("button", { name: "Manage knowledge" }).click();
   await page.getByLabel("Document title").fill(`E2E cancellation ${suffix}`);
@@ -79,7 +81,11 @@ test("streams cited answers and reviews an edited write proposal", async ({
     .fill("Dispatcher verified scope");
   await page.getByRole("button", { name: "Save edits & approve" }).click();
   await expect(
-    page.getByText(`Created draft job “Reviewed AI job ${suffix}”.`).last(),
+    page
+      .getByText(
+        `Created draft job “Reviewed AI job ${suffix}” for customer “Copilot Customer ${suffix}”.`,
+      )
+      .last(),
   ).toBeVisible();
   await expect(page.locator(".tool-card").last()).toContainText("completed");
   const layout = await page.evaluate(() => {
@@ -109,7 +115,9 @@ test("streams cited answers and reviews an edited write proposal", async ({
   const jobs = await jobsResponse.json();
   expect(
     jobs.items.some(
-      (job: { title: string }) => job.title === `Reviewed AI job ${suffix}`,
+      (job: { title: string; customer_id: string }) =>
+        job.title === `Reviewed AI job ${suffix}` &&
+        job.customer_id === customer.id,
     ),
   ).toBeTruthy();
 });

@@ -14,6 +14,12 @@ export default defineConfig({
     url: "http://localhost:5173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: {
+      ...process.env,
+      // Production keeps these specialist consoles out of the focused demo
+      // navigation. E2E enables them so their workflows remain covered.
+      VITE_ENABLE_ADVANCED_MODULES: "true",
+    },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });
