@@ -77,6 +77,7 @@ services:
       OMNI_S3_BUCKET: omni-attachments
       OMNI_AI_PROVIDER: ${OMNI_AI_PROVIDER:-local}
       OMNI_AI_MODEL: ${OMNI_AI_MODEL:-omni-copilot-local-v1}
+      OMNI_AI_ALLOW_LOCAL_FALLBACK: "false"
       OMNI_AI_RUNS_PER_MINUTE: "30"
       OMNI_AI_TIMEOUT_SECONDS: "15"
       OMNI_TRACING_ENABLED: "true"

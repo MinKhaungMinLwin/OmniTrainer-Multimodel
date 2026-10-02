@@ -11,7 +11,7 @@ from openinference.semconv.trace import OpenInferenceSpanKindValues, SpanAttribu
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.api.omni_api.ai_gateway import plan_with_resilience
+from services.api.omni_api.ai_gateway import AIProviderError, plan_with_resilience
 from services.api.omni_api.ai_schemas import (
     ApprovalDecision,
     ApprovalRead,
@@ -378,6 +378,7 @@ async def _process_new_run(
         model=settings.ai_model,
         base_url=provider_base_url,
         reasoning_effort=settings.openai_reasoning_effort,
+        allow_local_fallback=settings.ai_allow_local_fallback,
     )
     run.provider = plan.provider
     run.model = plan.model
@@ -595,6 +596,24 @@ async def create_run(
     )
     try:
         await process_new_run(session, run, payload.content, context, request)
+    except AIProviderError as exc:
+        run.status = "failed"
+        run.error_code = "provider_unavailable"
+        run.error_message = (
+            "The configured AI provider is unavailable. No tools were run; retry when the provider recovers."
+        )
+        await append_event(
+            session,
+            run,
+            "failed",
+            {
+                "code": run.error_code,
+                "message": run.error_message,
+                "provider": exc.provider,
+                "error_type": exc.error_type,
+            },
+        )
+        request.app.state.last_ai_error = repr(exc.__cause__ or exc)
     except Exception as exc:
         run.status = "failed"
         run.error_code = "internal_error"
