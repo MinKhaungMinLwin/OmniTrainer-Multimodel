@@ -584,6 +584,12 @@ function CustomerDetailPanel({
     queryKey: ["customer", tenantId, customerId],
     queryFn: () => api.customer(customerId),
   });
+  const jobs = useQuery({
+    queryKey: ["jobs", tenantId],
+    queryFn: () => api.jobs(),
+  });
+  const customerJobs =
+    jobs.data?.items.filter((job) => job.customer_id === customerId) ?? [];
   const refresh = async () => {
     await Promise.all([
       cache.invalidateQueries({ queryKey: ["customer", tenantId, customerId] }),
@@ -716,6 +722,15 @@ function CustomerDetailPanel({
                 <button>Add</button>
               </form>
             </DetailCollection>
+            <DetailCollection title="Jobs" empty="No jobs for this customer.">
+              {customerJobs.map((job) => (
+                <p key={job.id}>
+                  <strong>{job.title}</strong>
+                  <br />
+                  {job.status} · Version {job.version}
+                </p>
+              ))}
+            </DetailCollection>
             <DetailCollection title="Activity" empty="No activity yet.">
               {detail.data.activity.map((item) => (
                 <p key={item.id}>
@@ -769,6 +784,9 @@ function JobsPage({ api, tenantId }: { api: OmniApiClient; tenantId: string }) {
     queryKey: ["jobs", tenantId],
     queryFn: () => api.jobs(),
   });
+  const customerNames = new Map(
+    customers.data?.items.map((customer) => [customer.id, customer.name]) ?? [],
+  );
   const selectedCustomerId = customerId || customers.data?.items[0]?.id || "";
   const customerDetail = useQuery({
     queryKey: ["customer", tenantId, selectedCustomerId],
@@ -919,7 +937,8 @@ function JobsPage({ api, tenantId }: { api: OmniApiClient; tenantId: string }) {
             <div>
               <h2>{job.title}</h2>
               <p>
-                Version {job.version} · {job.status}
+                {customerNames.get(job.customer_id) ?? "Unknown customer"}
+                {" · "}Version {job.version} · {job.status}
               </p>
             </div>
             <div className="row-actions">
@@ -945,6 +964,9 @@ function JobsPage({ api, tenantId }: { api: OmniApiClient; tenantId: string }) {
         <JobDetailPanel
           api={api}
           job={selectedJob}
+          customerName={
+            customerNames.get(selectedJob.customer_id) ?? "Unknown customer"
+          }
           tenantId={tenantId}
           onClose={() => setSelectedJob(null)}
         />
@@ -956,11 +978,13 @@ function JobsPage({ api, tenantId }: { api: OmniApiClient; tenantId: string }) {
 function JobDetailPanel({
   api,
   job,
+  customerName,
   tenantId,
   onClose,
 }: {
   api: OmniApiClient;
   job: Job;
+  customerName: string;
   tenantId: string;
   onClose: () => void;
 }) {
@@ -1021,6 +1045,9 @@ function JobDetailPanel({
         </button>
         <span className="eyebrow">{job.status}</span>
         <h1>{job.title}</h1>
+        <p>
+          Customer: <strong>{customerName}</strong>
+        </p>
         <p>{job.description ?? "No job description."}</p>
         <DetailCollection title="Notes" empty="No notes yet.">
           {notes.data?.map((note) => (

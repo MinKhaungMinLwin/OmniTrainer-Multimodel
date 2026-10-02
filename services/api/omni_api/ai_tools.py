@@ -612,7 +612,7 @@ async def execute_tool(
             session,
         )
         return {
-            "summary": f"Created draft job “{job.title}”.",
+            "summary": f"Created draft job “{job.title}” for customer “{customer.name}”.",
             "data": {"job": JobRead.model_validate(job).model_dump(mode="json")},
             "links": [{"label": job.title, "resource": "job", "id": job.id}],
             "citations": [],
