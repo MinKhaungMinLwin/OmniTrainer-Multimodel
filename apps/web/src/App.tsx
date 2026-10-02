@@ -4081,7 +4081,9 @@ function AssistantPage({
               )}
               {activeRun?.run.status === "failed" && (
                 <div className="run-actions">
-                  <span>The run failed safely.</span>
+                  <span>
+                    {activeRun.run.error_message ?? "The run failed safely."}
+                  </span>
                   <button onClick={() => regenerate.mutate()}>Retry run</button>
                 </div>
               )}
