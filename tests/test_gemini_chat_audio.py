@@ -1,14 +1,17 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
 from services.api.omni_api.ai_gateway import (
+    AIProviderError,
     AnthropicCopilotProvider,
     GeminiCopilotProvider,
     GeminiPlan,
     GeminiToolPlan,
     OpenAICopilotProvider,
+    plan_with_resilience,
 )
 from services.api.omni_api.config import Settings
 from services.api.omni_api.gemini_audio import GeminiAudioService, Transcription, pcm_to_wav
@@ -115,6 +118,53 @@ def test_anthropic_provider_uses_native_typed_tools_and_usage():
     assert result.cost_micros == 450
     assert result.tools[0].name == "create_customer"
     assert result.tools[0].arguments["name"] == "James X"
+
+
+class FailingProvider:
+    def plan(self, _prompt: str):
+        raise ConnectionError("provider offline")
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_fails_closed_without_local_fallback(monkeypatch):
+    monkeypatch.setattr(
+        "services.api.omni_api.ai_gateway.get_copilot_provider",
+        lambda *args, **kwargs: FailingProvider(),
+    )
+
+    with pytest.raises(AIProviderError) as caught:
+        await plan_with_resilience(
+            "openai",
+            "Create a customer named Brook",
+            timeout_seconds=1,
+            retries=0,
+            api_key="test-key",
+        )
+
+    assert caught.value.provider == "openai"
+    assert caught.value.error_type == "ConnectionError"
+
+
+@pytest.mark.asyncio
+async def test_local_fallback_requires_explicit_opt_in(monkeypatch):
+    monkeypatch.setattr(
+        "services.api.omni_api.ai_gateway.get_copilot_provider",
+        lambda *args, **kwargs: FailingProvider(),
+    )
+
+    plan = await plan_with_resilience(
+        "openai",
+        'Create job "Repair" for customer Brook',
+        timeout_seconds=1,
+        retries=0,
+        api_key="test-key",
+        allow_local_fallback=True,
+    )
+
+    assert plan.provider == "local"
+    assert plan.model == "omni-copilot-local-v1"
+    assert plan.tools[0].name == "draft_job"
+    assert plan.tools[0].arguments["customer_name"] == "Brook"
 
 
 def test_pcm_is_wrapped_as_browser_playable_wav():

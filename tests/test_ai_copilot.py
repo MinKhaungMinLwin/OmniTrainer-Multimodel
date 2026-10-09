@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from services.api.omni_api.ai_gateway import estimated_cost_micros
+from services.api.omni_api.ai_gateway import AIProviderError, estimated_cost_micros
 from services.api.omni_api.ai_tools import (
     TOOL_REGISTRY,
     normalize_schedule_timestamp,
@@ -43,6 +43,32 @@ def test_cost_estimate_uses_standard_token_rates():
     assert estimated_cost_micros("gpt-5.6-sol", 1_000_000, 1_000_000) == 24_000_000
     assert estimated_cost_micros("claude-sonnet-5", 1_000_000, 1_000_000) == 12_000_000
     assert estimated_cost_micros("unknown-model", 1000, 1000) == 0
+
+
+def test_provider_failure_fails_run_without_proposing_tools(monkeypatch, tmp_path: Path):
+    async def fail_planning(*_args, **_kwargs):
+        raise AIProviderError("local", ConnectionError("provider offline"))
+
+    monkeypatch.setattr("services.api.omni_api.ai_copilot.plan_with_resilience", fail_planning)
+
+    with TestClient(build_app(tmp_path / "provider-failure.db")) as client:
+        headers = authenticate(client)
+        conversation = client.post("/api/v1/ai/conversations", headers=headers, json={}).json()
+        response = client.post(
+            f"/api/v1/ai/conversations/{conversation['id']}/runs",
+            headers=command(headers, "provider-failure-run"),
+            json={"content": "Create a customer named Brook"},
+        )
+
+    assert response.status_code == 201
+    detail = response.json()
+    assert detail["run"]["status"] == "failed"
+    assert detail["run"]["error_code"] == "provider_unavailable"
+    assert "provider is unavailable" in detail["run"]["error_message"]
+    assert detail["tools"] == []
+    failed_event = next(event for event in detail["events"] if event["event_type"] == "failed")
+    assert failed_event["payload"]["provider"] == "local"
+    assert failed_event["payload"]["error_type"] == "ConnectionError"
 
 
 def test_schedule_tool_discards_unexpected_customer_context():

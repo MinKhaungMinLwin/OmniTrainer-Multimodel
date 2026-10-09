@@ -33,6 +33,15 @@ class CopilotProvider(Protocol):
     def plan(self, prompt: str) -> GatewayPlan: ...
 
 
+class AIProviderError(RuntimeError):
+    """Safe provider failure metadata without leaking request or credential values."""
+
+    def __init__(self, provider: str, cause: Exception):
+        self.provider = provider
+        self.error_type = type(cause).__name__
+        super().__init__(f"{provider} planning failed after retries")
+
+
 STANDARD_PRICING_PER_MILLION: dict[str, tuple[float, float]] = {
     "gemini-3.5-flash-lite": (0.30, 2.50),
     "gpt-5.6-sol": (4.00, 20.00),
@@ -344,7 +353,10 @@ class OpenAICopilotProvider:
         base_url: str | None = None,
         reasoning_effort: str = "low",
     ):
-        self.client = OpenAI(api_key=api_key, base_url=base_url.rstrip("/") if base_url else None)
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url.rstrip("/") if base_url else "https://api.openai.com/v1",
+        )
         self.model = model
         self.reasoning_effort = reasoning_effort
 
@@ -458,14 +470,18 @@ async def plan_with_resilience(
     model: str = "gemini-3.5-flash-lite",
     base_url: str | None = None,
     reasoning_effort: str = "low",
+    allow_local_fallback: bool = False,
 ) -> GatewayPlan:
-    provider = get_copilot_provider(
-        provider_name,
-        api_key=api_key,
-        model=model,
-        base_url=base_url,
-        reasoning_effort=reasoning_effort,
-    )
+    try:
+        provider = get_copilot_provider(
+            provider_name,
+            api_key=api_key,
+            model=model,
+            base_url=base_url,
+            reasoning_effort=reasoning_effort,
+        )
+    except Exception as exc:
+        raise AIProviderError(provider_name, exc) from exc
     provider_prompt, redaction_tokens = redact_with_tokens(prompt)
     for attempt in range(retries + 1):
         try:
@@ -482,9 +498,9 @@ async def plan_with_resilience(
                 model=plan.model,
                 cost_micros=plan.cost_micros,
             )
-        except Exception:
+        except Exception as exc:
             if attempt == retries:
-                if provider_name != "local":
+                if allow_local_fallback and provider_name != "local":
                     fallback = LocalCopilotProvider().plan(provider_prompt)
                     return GatewayPlan(
                         introduction=fallback.introduction,
@@ -498,5 +514,5 @@ async def plan_with_resilience(
                         model=fallback.model,
                         cost_micros=fallback.cost_micros,
                     )
-                raise
+                raise AIProviderError(provider_name, exc) from exc
     raise RuntimeError("AI provider failed")

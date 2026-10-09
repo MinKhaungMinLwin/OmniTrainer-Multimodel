@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     max_attachment_bytes: int = 10 * 1024 * 1024
     ai_provider: str = "local"
     ai_model: str = "omni-copilot-local-v1"
+    ai_allow_local_fallback: bool = False
     ai_runs_per_minute: int = Field(default=30, ge=1, le=1000)
     ai_timeout_seconds: int = Field(default=15, ge=1, le=120)
     tracing_enabled: bool = False
