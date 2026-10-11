@@ -39,6 +39,7 @@ from services.api.omni_api.ai_tools import (
     ToolInputError,
     execute_tool,
     normalize_tool_arguments,
+    prepare_tool_arguments,
     registry_payload,
     search_knowledge,
 )
@@ -379,6 +380,8 @@ async def _process_new_run(
         base_url=provider_base_url,
         reasoning_effort=settings.openai_reasoning_effort,
         allow_local_fallback=settings.ai_allow_local_fallback,
+        gcp_project=settings.gcp_project,
+        gcp_location=settings.gcp_location,
     )
     run.provider = plan.provider
     run.model = plan.model
@@ -403,7 +406,13 @@ async def _process_new_run(
             version=definition.version,
             risk=definition.risk,
             status="proposed",
-            input=normalize_tool_arguments(definition, plan_item.arguments),
+            input=await prepare_tool_arguments(
+                definition.name,
+                normalize_tool_arguments(definition, plan_item.arguments),
+                session=session,
+                context=context,
+                settings=settings,
+            ),
             idempotency_key=f"ai-tool-{run.id}-{len(parts) + 1}",
         )
         session.add(tool)

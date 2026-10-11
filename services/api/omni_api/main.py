@@ -24,6 +24,7 @@ from services.api.omni_api.intelligence import router as intelligence_router
 from services.api.omni_api.models import TenantMembership, User
 from services.api.omni_api.operations import router as operations_router
 from services.api.omni_api.operations_mvp import router as operations_mvp_router
+from services.api.omni_api.retail import router as retail_router
 from services.api.omni_api.schemas import (
     DevTokenRequest,
     TenantRead,
@@ -125,6 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     api.include_router(voice_router)
     api.include_router(intelligence_router)
     api.include_router(environment_router)
+    api.include_router(retail_router)
     app.include_router(api)
     return app
 
