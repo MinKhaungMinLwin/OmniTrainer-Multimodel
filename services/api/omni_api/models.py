@@ -918,3 +918,123 @@ class EnvironmentalReport(TimestampMixin, Base):
     reviewed_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Product(TimestampMixin, Base):
+    __tablename__ = "products"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "sku"),
+        Index("ix_products_tenant_category", "tenant_id", "category"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    sku: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200))
+    brand: Mapped[str] = mapped_column(String(120))
+    category: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text)
+    price_cents: Mapped[int] = mapped_column(Integer)
+    cost_cents: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), default="SGD")
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class InventoryLevel(TimestampMixin, Base):
+    __tablename__ = "inventory_levels"
+    __table_args__ = (UniqueConstraint("tenant_id", "product_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[str] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), index=True)
+    on_hand: Mapped[int] = mapped_column(Integer, default=0)
+    safety_stock: Mapped[int] = mapped_column(Integer, default=0)
+    lead_time_days: Mapped[int] = mapped_column(Integer, default=7)
+    case_pack: Mapped[int] = mapped_column(Integer, default=1)
+    supplier: Mapped[str] = mapped_column(String(200))
+
+
+class SalesOrder(TimestampMixin, Base):
+    __tablename__ = "sales_orders"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number"),
+        Index("ix_sales_orders_tenant_placed", "tenant_id", "placed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    customer_id: Mapped[str | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    number: Mapped[str] = mapped_column(String(40))
+    channel: Mapped[str] = mapped_column(String(20))
+    store: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(30), default="completed")
+    placed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    subtotal_cents: Mapped[int] = mapped_column(Integer)
+    discount_cents: Mapped[int] = mapped_column(Integer, default=0)
+    total_cents: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), default="SGD")
+
+    lines: Mapped[list["SalesOrderLine"]] = relationship(cascade="all, delete-orphan")
+
+
+class SalesOrderLine(Base):
+    __tablename__ = "sales_order_lines"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    order_id: Mapped[str] = mapped_column(ForeignKey("sales_orders.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[str] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), index=True)
+    quantity: Mapped[int] = mapped_column(Integer)
+    unit_price_cents: Mapped[int] = mapped_column(Integer)
+    line_total_cents: Mapped[int] = mapped_column(Integer)
+
+
+class PurchaseOrder(TimestampMixin, Base):
+    __tablename__ = "purchase_orders"
+    __table_args__ = (UniqueConstraint("tenant_id", "number"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    number: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(30), default="approved")
+    source: Mapped[str] = mapped_column(String(50), default="omni_agent")
+    total_cost_cents: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), default="SGD")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    forecast: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    idempotency_key: Mapped[str] = mapped_column(String(200))
+
+    lines: Mapped[list["PurchaseOrderLine"]] = relationship(cascade="all, delete-orphan")
+
+
+class PurchaseOrderLine(Base):
+    __tablename__ = "purchase_order_lines"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    purchase_order_id: Mapped[str] = mapped_column(ForeignKey("purchase_orders.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[str] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), index=True)
+    supplier: Mapped[str] = mapped_column(String(200))
+    quantity: Mapped[int] = mapped_column(Integer)
+    unit_cost_cents: Mapped[int] = mapped_column(Integer)
+
+
+class Campaign(TimestampMixin, Base):
+    __tablename__ = "campaigns"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    segment: Mapped[str] = mapped_column(String(60))
+    offer: Mapped[str] = mapped_column(String(300))
+    message: Mapped[str] = mapped_column(Text)
+    channel: Mapped[str] = mapped_column(String(20))
+    audience_size: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(30), default="approved")
+    created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    idempotency_key: Mapped[str] = mapped_column(String(200))

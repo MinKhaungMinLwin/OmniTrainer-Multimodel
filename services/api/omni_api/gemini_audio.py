@@ -34,6 +34,10 @@ class GeminiAudioError(RuntimeError):
 
 
 def gemini_client(settings: Settings) -> genai.Client:
+    if settings.ai_provider == "vertex":
+        if not settings.gcp_project:
+            raise GeminiConfigurationError("Vertex AI requires GOOGLE_CLOUD_PROJECT")
+        return genai.Client(vertexai=True, project=settings.gcp_project, location=settings.gcp_location)
     if not settings.gemini_api_key:
         raise GeminiConfigurationError("Gemini is not configured")
     http_options = None

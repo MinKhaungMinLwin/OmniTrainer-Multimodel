@@ -55,6 +55,8 @@ omni-seed = "services.api.omni_api.seed:main"
 omni-openapi = "services.api.omni_api.openapi:main"
 omni-voice = "services.voice.omni_voice.main:main"
 omni-environment-mcp = "services.environment_mcp.server:main"
+omni-retail-seed = "services.api.omni_api.retail_seed:main"
+omni-retail-sync = "services.api.omni_api.retail_sync:main"
 
 [tool.black]
 line-length = 120
@@ -106,6 +108,9 @@ platform = [
     "python-docx>=1.1.2",
     "arize-phoenix-otel>=0.13.1",
     "openinference-instrumentation-google-genai>=0.1.0",
+    "google-cloud-discoveryengine>=0.13.0",
+    "google-cloud-bigquery>=3.30.0",
+    "google-cloud-storage>=2.19.0",
 ]
 dev = [
     "pytest>=8.4.2",

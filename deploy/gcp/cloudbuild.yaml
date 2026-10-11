@@ -1,0 +1,18 @@
+# Builds the API and retail web images in parallel and pushes them to Artifact Registry.
+# Invoked by deploy/gcp/deploy.sh with _API_IMAGE and _WEB_IMAGE substitutions.
+steps:
+  - id: api
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "services/api/Dockerfile", "-t", "${_API_IMAGE}", "."]
+    waitFor: ["-"]
+  - id: web
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "deploy/gcp/web.Dockerfile", "--build-arg", "VITE_PRODUCT_EDITION=retail", "-t", "${_WEB_IMAGE}", "."]
+    waitFor: ["-"]
+images:
+  - "${_API_IMAGE}"
+  - "${_WEB_IMAGE}"
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1800s

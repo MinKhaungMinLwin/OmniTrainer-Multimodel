@@ -29,6 +29,13 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import {
+  CatalogPage,
+  isRestockLines,
+  MerchantInsightsPage,
+  RestockLinesTable,
+  StorefrontPage,
+} from "./RetailPages";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const TOKEN_KEY = "omni.access-token";
@@ -66,6 +73,12 @@ const customerSchema = z.object({
 // operations deployment with VITE_ENABLE_ADVANCED_MODULES=true.
 const advancedModulesEnabled =
   import.meta.env.VITE_ENABLE_ADVANCED_MODULES === "true";
+// The retail edition (Google Cloud AI Builder Cup build) leads with commerce
+// workspaces; VITE_PRODUCT_EDITION=environmental keeps the lab-focused demo.
+const retailEdition = import.meta.env.VITE_PRODUCT_EDITION === "retail";
+const RETAIL_TENANT_SLUG = "harbourline";
+if (retailEdition && typeof document !== "undefined")
+  document.title = "Omni Commerce";
 
 type CustomerForm = z.infer<typeof customerSchema>;
 type Section =
@@ -78,7 +91,10 @@ type Section =
   | "automations"
   | "voice"
   | "intelligence"
-  | "environmental";
+  | "environmental"
+  | "insights"
+  | "shop"
+  | "catalog";
 
 function useOnlineStatus() {
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -162,11 +178,18 @@ function SignIn({
   return (
     <main className="auth-page">
       <section className="auth-card">
-        <span className="eyebrow">Omni Model</span>
-        <h1>Run your operation from one calm workspace.</h1>
+        <span className="eyebrow">
+          {retailEdition ? "Omni Commerce" : "Omni Model"}
+        </span>
+        <h1>
+          {retailEdition
+            ? "Know every shopper. Never miss a sale."
+            : "Run your operation from one calm workspace."}
+        </h1>
         <p>
-          Customers, jobs, schedules, invoices, and AI-assisted work—connected
-          by design.
+          {retailEdition
+            ? "Conversational shopping, demand forecasts, and customer insights with human-approved AI actions."
+            : "Customers, jobs, schedules, invoices, and AI-assisted work—connected by design."}
         </p>
         <form
           onSubmit={(event) => {
@@ -207,7 +230,18 @@ function AuthenticatedApp({
   onTenantChange: (id: string) => void;
   onSignOut: () => void;
 }) {
-  const [section, setSection] = useState<Section>("environmental");
+  const [section, setSectionState] = useState<Section>(
+    retailEdition ? "insights" : "environmental",
+  );
+  const [agentPrompt, setAgentPrompt] = useState<string | undefined>();
+  const setSection = (next: Section) => {
+    setAgentPrompt(undefined);
+    setSectionState(next);
+  };
+  const askAgent = (prompt: string) => {
+    setAgentPrompt(prompt);
+    setSectionState("assistant");
+  };
   const online = useOnlineStatus();
   const tenants = useQuery({
     queryKey: ["tenants"],
@@ -220,6 +254,9 @@ function AuthenticatedApp({
   });
   const activeTenant =
     tenants.data?.find((tenant) => tenant.id === tenantId)?.id ??
+    (retailEdition
+      ? tenants.data?.find((tenant) => tenant.slug === RETAIL_TENANT_SLUG)?.id
+      : undefined) ??
     tenants.data?.[0]?.id ??
     null;
   const pageTenant = tenantId === activeTenant ? activeTenant : null;
@@ -251,22 +288,56 @@ function AuthenticatedApp({
         <div className="brand">
           <span className="brand-mark">OM</span>
           <span className="brand-copy">
-            <strong>Omni Model</strong>
-            <small>Environmental AI</small>
+            <strong>{retailEdition ? "Omni Commerce" : "Omni Model"}</strong>
+            <small>{retailEdition ? "Retail AI" : "Environmental AI"}</small>
           </span>
         </div>
         <nav aria-label="Primary">
           <span className="nav-section-label">Workspace</span>
-          <button
-            className={section === "environmental" ? "active" : ""}
-            onClick={() => setSection("environmental")}
-          >
-            <span className="nav-icon" aria-hidden="true">
-              E
-            </span>
-            <span className="nav-label">Environmental</span>
-            <em>Lab</em>
-          </button>
+          {retailEdition && (
+            <>
+              <button
+                className={section === "insights" ? "active" : ""}
+                onClick={() => setSection("insights")}
+              >
+                <span className="nav-icon" aria-hidden="true">
+                  ◔
+                </span>
+                <span className="nav-label">Merchant insights</span>
+              </button>
+              <button
+                className={section === "shop" ? "active" : ""}
+                onClick={() => setSection("shop")}
+              >
+                <span className="nav-icon" aria-hidden="true">
+                  ◎
+                </span>
+                <span className="nav-label">Storefront</span>
+                <em>AI</em>
+              </button>
+              <button
+                className={section === "catalog" ? "active" : ""}
+                onClick={() => setSection("catalog")}
+              >
+                <span className="nav-icon" aria-hidden="true">
+                  ▤
+                </span>
+                <span className="nav-label">Catalogue</span>
+              </button>
+            </>
+          )}
+          {!retailEdition && (
+            <button
+              className={section === "environmental" ? "active" : ""}
+              onClick={() => setSection("environmental")}
+            >
+              <span className="nav-icon" aria-hidden="true">
+                E
+              </span>
+              <span className="nav-label">Environmental</span>
+              <em>Lab</em>
+            </button>
+          )}
           <button
             className={section === "assistant" ? "active" : ""}
             onClick={() => setSection("assistant")}
@@ -287,42 +358,46 @@ function AuthenticatedApp({
             </span>
             <span className="nav-label">Customers</span>
           </button>
-          <button
-            className={section === "jobs" ? "active" : ""}
-            onClick={() => setSection("jobs")}
-          >
-            <span className="nav-icon" aria-hidden="true">
-              J
-            </span>
-            <span className="nav-label">Jobs</span>
-          </button>
-          <button
-            className={section === "schedule" ? "active" : ""}
-            onClick={() => setSection("schedule")}
-          >
-            <span className="nav-icon" aria-hidden="true">
-              S
-            </span>
-            <span className="nav-label">Schedule</span>
-          </button>
-          <button
-            className={section === "invoices" ? "active" : ""}
-            onClick={() => setSection("invoices")}
-          >
-            <span className="nav-icon" aria-hidden="true">
-              I
-            </span>
-            <span className="nav-label">Invoices</span>
-          </button>
-          <button
-            className={section === "team" ? "active" : ""}
-            onClick={() => setSection("team")}
-          >
-            <span className="nav-icon" aria-hidden="true">
-              T
-            </span>
-            <span className="nav-label">Team</span>
-          </button>
+          {!retailEdition && (
+            <>
+              <button
+                className={section === "jobs" ? "active" : ""}
+                onClick={() => setSection("jobs")}
+              >
+                <span className="nav-icon" aria-hidden="true">
+                  J
+                </span>
+                <span className="nav-label">Jobs</span>
+              </button>
+              <button
+                className={section === "schedule" ? "active" : ""}
+                onClick={() => setSection("schedule")}
+              >
+                <span className="nav-icon" aria-hidden="true">
+                  S
+                </span>
+                <span className="nav-label">Schedule</span>
+              </button>
+              <button
+                className={section === "invoices" ? "active" : ""}
+                onClick={() => setSection("invoices")}
+              >
+                <span className="nav-icon" aria-hidden="true">
+                  I
+                </span>
+                <span className="nav-label">Invoices</span>
+              </button>
+              <button
+                className={section === "team" ? "active" : ""}
+                onClick={() => setSection("team")}
+              >
+                <span className="nav-icon" aria-hidden="true">
+                  T
+                </span>
+                <span className="nav-label">Team</span>
+              </button>
+            </>
+          )}
           {advancedModulesEnabled && (
             <>
               <button
@@ -401,7 +476,24 @@ function AuthenticatedApp({
             <TeamPage api={api} tenantId={pageTenant} />
           )}
           {pageTenant && section === "assistant" && (
-            <AssistantPage api={api} tenantId={pageTenant} />
+            <AssistantPage
+              api={api}
+              tenantId={pageTenant}
+              initialPrompt={agentPrompt}
+            />
+          )}
+          {pageTenant && section === "insights" && (
+            <MerchantInsightsPage
+              api={api}
+              tenantId={pageTenant}
+              onAskAgent={askAgent}
+            />
+          )}
+          {pageTenant && section === "shop" && (
+            <StorefrontPage api={api} tenantId={pageTenant} />
+          )}
+          {pageTenant && section === "catalog" && (
+            <CatalogPage api={api} tenantId={pageTenant} />
           )}
           {advancedModulesEnabled &&
             pageTenant &&
@@ -1696,13 +1788,18 @@ function ToolCard({
         <span className="status-pill">{tool.status.replaceAll("_", " ")}</span>
       </div>
       <dl className="tool-fields">
-        {Object.entries(tool.input).map(([name, value]) => (
-          <div key={name}>
-            <dt>{name.replaceAll("_", " ")}</dt>
-            <dd>{displayValue(value)}</dd>
-          </div>
-        ))}
+        {Object.entries(tool.input)
+          .filter(([, value]) => !isRestockLines(value))
+          .map(([name, value]) => (
+            <div key={name}>
+              <dt>{name.replaceAll("_", " ")}</dt>
+              <dd>{displayValue(value)}</dd>
+            </div>
+          ))}
       </dl>
+      {isRestockLines(tool.input.lines) && (
+        <RestockLinesTable lines={tool.input.lines} />
+      )}
       {summary && <p className="tool-summary">{summary}</p>}
       {links.map((link, index) => {
         const item = link as { label?: string; resource?: string; id?: string };
@@ -1750,27 +1847,37 @@ function ApprovalCard({
       <p>
         This action changes business data. Review every field before it runs.
       </p>
+      {isRestockLines(argumentsValue.lines) && (
+        <RestockLinesTable
+          lines={argumentsValue.lines}
+          onChange={(lines) =>
+            setArgumentsValue((current) => ({ ...current, lines }))
+          }
+        />
+      )}
       <div className="approval-fields">
-        {Object.entries(argumentsValue).map(([name, value]) => (
-          <label key={name}>
-            {name.replaceAll("_", " ")}
-            <input
-              aria-label={`Approval ${name}`}
-              value={
-                displayValue(value) === "Not set" ? "" : displayValue(value)
-              }
-              onChange={(event) =>
-                setArgumentsValue((current) => ({
-                  ...current,
-                  [name]:
-                    typeof value === "number"
-                      ? Number(event.target.value)
-                      : event.target.value || null,
-                }))
-              }
-            />
-          </label>
-        ))}
+        {Object.entries(argumentsValue)
+          .filter(([, value]) => !isRestockLines(value))
+          .map(([name, value]) => (
+            <label key={name}>
+              {name.replaceAll("_", " ")}
+              <input
+                aria-label={`Approval ${name}`}
+                value={
+                  displayValue(value) === "Not set" ? "" : displayValue(value)
+                }
+                onChange={(event) =>
+                  setArgumentsValue((current) => ({
+                    ...current,
+                    [name]:
+                      typeof value === "number"
+                        ? Number(event.target.value)
+                        : event.target.value || null,
+                  }))
+                }
+              />
+            </label>
+          ))}
         <label>
           Review reason
           <input
@@ -3580,9 +3687,11 @@ function Metric({ label, value }: { label: string; value: number | string }) {
 function AssistantPage({
   api,
   tenantId,
+  initialPrompt,
 }: {
   api: OmniApiClient;
   tenantId: string;
+  initialPrompt?: string;
 }) {
   const cache = useQueryClient();
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -3593,7 +3702,7 @@ function AssistantPage({
   const [knowledgeTitle, setKnowledgeTitle] = useState("");
   const [knowledgeContent, setKnowledgeContent] = useState("");
   const [extractionText, setExtractionText] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -3670,9 +3779,18 @@ function AssistantPage({
       await streamRun(detail, after);
       if (decision !== "reject") {
         await Promise.all(
-          ["customers", "jobs", "appointments", "invoices", "technicians"].map(
-            (resource) =>
-              cache.invalidateQueries({ queryKey: [resource, tenantId] }),
+          [
+            "customers",
+            "jobs",
+            "appointments",
+            "invoices",
+            "technicians",
+            "purchase-orders",
+            "retail-inventory",
+            "retail-campaigns",
+            "retail-products",
+          ].map((resource) =>
+            cache.invalidateQueries({ queryKey: [resource, tenantId] }),
           ),
         );
       }

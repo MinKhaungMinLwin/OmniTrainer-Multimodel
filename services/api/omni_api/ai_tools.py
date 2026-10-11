@@ -63,6 +63,8 @@ def object_schema(required: list[str], properties: dict[str, Any]) -> dict[str, 
     return {"type": "object", "additionalProperties": False, "required": required, "properties": properties}
 
 
+ALL_ROLES = ("owner", "dispatcher", "technician", "accountant", "reviewer", "administrator")
+
 TOOL_REGISTRY: dict[str, ToolDefinition] = {
     "find_customer": ToolDefinition(
         "find_customer",
@@ -217,6 +219,86 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
             },
         ),
     ),
+    "search_products": ToolDefinition(
+        "search_products",
+        "Search products",
+        "Search the retail catalog with Vertex AI Search and return prices and stock.",
+        "read",
+        ALL_ROLES,
+        object_schema(["query"], {"query": {"type": "string", "minLength": 1}}),
+    ),
+    "forecast_stockouts": ToolDefinition(
+        "forecast_stockouts",
+        "Forecast stock-outs",
+        "Forecast demand per SKU and list products that will run out before replenishment arrives.",
+        "read",
+        ALL_ROLES,
+        object_schema([], {"horizon_days": {"type": ["integer", "null"], "minimum": 7, "maximum": 60}}),
+        timeout_seconds=20,
+    ),
+    "customer_insights": ToolDefinition(
+        "customer_insights",
+        "Customer insights",
+        "Summarise RFM customer segments or one customer's buying profile.",
+        "read",
+        ALL_ROLES,
+        object_schema(
+            [],
+            {
+                "customer_name": {"type": ["string", "null"]},
+                "segment": {"type": ["string", "null"]},
+            },
+        ),
+    ),
+    "basket_insights": ToolDefinition(
+        "basket_insights",
+        "Basket insights",
+        "Find products frequently bought together using association rules.",
+        "read",
+        ALL_ROLES,
+        object_schema([], {"product": {"type": ["string", "null"]}}),
+    ),
+    "propose_restock_orders": ToolDefinition(
+        "propose_restock_orders",
+        "Create restock purchase orders",
+        "Create supplier purchase orders from forecast-recommended quantities after human approval.",
+        "write",
+        ("owner", "dispatcher", "administrator"),
+        object_schema(
+            [],
+            {
+                "lines": {
+                    "type": ["array", "null"],
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": True,
+                        "required": ["sku", "quantity"],
+                        "properties": {"sku": {"type": "string"}, "quantity": {"type": "integer", "minimum": 0}},
+                    },
+                },
+                "horizon_days": {"type": ["integer", "null"], "minimum": 7, "maximum": 60},
+                "note": {"type": ["string", "null"]},
+            },
+        ),
+        timeout_seconds=20,
+    ),
+    "draft_campaign": ToolDefinition(
+        "draft_campaign",
+        "Approve segment campaign",
+        "Create a personalised campaign for a customer segment after human approval.",
+        "external",
+        ("owner", "dispatcher"),
+        object_schema(
+            ["segment", "offer", "message"],
+            {
+                "segment": {"type": "string", "minLength": 1},
+                "offer": {"type": "string", "minLength": 1},
+                "message": {"type": "string", "minLength": 1},
+                "channel": {"type": "string", "enum": ["email", "sms"]},
+                "audience_size": {"type": ["integer", "null"]},
+            },
+        ),
+    ),
 }
 
 
@@ -272,6 +354,15 @@ def normalize_tool_arguments(definition: ToolDefinition, arguments: dict[str, An
     """Keep only the explicitly allowlisted input fields for a model tool call."""
     allowed = definition.input_schema["properties"]
     return {name: value for name, value in arguments.items() if name in allowed}
+
+
+async def prepare_tool_arguments(
+    name: str, arguments: dict[str, Any], *, session: AsyncSession, context: TenantContext, settings: Any
+) -> dict[str, Any]:
+    """Enrich a model-proposed call with grounded data before it is persisted for review."""
+    from services.api.omni_api.retail_tools import prepare_retail_arguments
+
+    return await prepare_retail_arguments(name, arguments, session=session, context=context, settings=settings)
 
 
 def normalize_schedule_timestamp(value: str, timezone_name: str) -> str:
@@ -429,6 +520,13 @@ async def execute_tool(
     if context.role not in definition.roles:
         raise HTTPException(status_code=403, detail="Role does not permit this tool")
     validate_arguments(definition, arguments)
+
+    from services.api.omni_api.retail_tools import RETAIL_TOOL_NAMES, execute_retail_tool
+
+    if name in RETAIL_TOOL_NAMES:
+        return await execute_retail_tool(
+            name, arguments, session=session, context=context, request=request, idempotency_key=idempotency_key
+        )
 
     if name == "find_customer":
         required(arguments, "query")
