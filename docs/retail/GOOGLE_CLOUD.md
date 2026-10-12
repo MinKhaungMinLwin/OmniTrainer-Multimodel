@@ -75,6 +75,30 @@ the storefront uses the local ranker and shows "Local ranking (fallback)".
 Both Cloud Run services run with `--min-instances 1`, so judges never hit a
 cold start. Lower this after the event to save cost.
 
+### Phoenix tracing
+
+To send Cloud Run traces to your existing Phoenix (for example, the staging one
+behind Caddy), set these when deploying:
+
+```bash
+PHOENIX_COLLECTOR_ENDPOINT=https://<traces-domain>/v1/traces \
+PHOENIX_API_KEY=<PHOENIX_ADMIN_SECRET or a Phoenix system key> \
+PROJECT_ID=<id> SKIP_SYNC=true deploy/gcp/deploy.sh
+```
+
+The API key is stored in Secret Manager. Traces land in the `omni-commerce`
+project (override with `PHOENIX_PROJECT`). Prompts and replies are hidden by
+default; set `TRACE_CONTENT=true` to capture them for debugging. Each request
+produces one trace:
+
+- **Storefront turn:** `shop.assist` (one Phoenix session per chat) contains
+  two Gemini `GenerateContent` spans (intent, reply) and a `retail.search`
+  retriever span. The retriever span records whether Vertex AI Search or the
+  fallback served the results.
+- **Agent run:** `copilot.agent.run` contains the Gemini planning span, one
+  `tool.*` span per tool, and `retail.forecast`. The forecast span records
+  whether BigQuery AI.FORECAST or the local model was used.
+
 ### Security posture for the demo
 
 - Sign-in uses development auth (`OMNI_ALLOW_DEV_AUTH=true`) so judges can

@@ -1223,6 +1223,7 @@ export class OmniApiClient {
   shopAssist(payload: {
     message: string;
     customer_id?: string | null;
+    session_id?: string | null;
     history?: ShopTurn[];
   }): Promise<ShopAssistResponse> {
     return this.request(

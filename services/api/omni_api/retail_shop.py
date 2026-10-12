@@ -12,6 +12,7 @@ import logging
 import re
 from typing import Any, Literal
 
+from openinference.semconv.trace import OpenInferenceSpanKindValues, SpanAttributes
 from pydantic import BaseModel, Field
 
 from services.api.omni_api.ai_gateway import redact_for_provider
@@ -24,6 +25,7 @@ from services.api.omni_api.retail_analytics import (
     customer_profile,
     daily_units,
 )
+from services.observability import hash_identifier, traced_span
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +114,7 @@ class ShopTurn(BaseModel):
 class ShopAssistRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
     customer_id: str | None = None
+    session_id: str | None = Field(default=None, max_length=100)
     history: list[ShopTurn] = Field(default_factory=list, max_length=10)
 
 
@@ -179,6 +182,21 @@ def local_rank(dataset: RetailDataset, query: str) -> list[ProductInfo]:
 
 
 async def retrieve(settings: Settings, dataset: RetailDataset, query: str) -> tuple[list[ProductInfo], str]:
+    with traced_span(
+        "retail.search",
+        OpenInferenceSpanKindValues.RETRIEVER,
+        attributes={
+            "retrieval.backend_requested": settings.retail_search_backend,
+            "retrieval.query_word_count": len(tokens(query)),
+        },
+    ) as span:
+        products, backend = await _retrieve(settings, dataset, query)
+        span.set_attribute("retrieval.backend", backend)
+        span.set_attribute("retrieval.result_count", len(products))
+        return products, backend
+
+
+async def _retrieve(settings: Settings, dataset: RetailDataset, query: str) -> tuple[list[ProductInfo], str]:
     if settings.retail_search_backend == "vertex":
         from services.api.omni_api.retail_gcp import vertex_search_skus
 
@@ -296,7 +314,43 @@ def uses_gemini(settings: Settings) -> bool:
     return settings.ai_provider in ("gemini", "vertex")
 
 
-async def assist(settings: Settings, dataset: RetailDataset, payload: ShopAssistRequest) -> dict[str, Any]:
+async def assist(
+    settings: Settings,
+    dataset: RetailDataset,
+    payload: ShopAssistRequest,
+    *,
+    tenant_id: str = "",
+    user_id: str = "",
+) -> dict[str, Any]:
+    """Traced entry point: one Phoenix trace per shopper turn, grouped by chat session."""
+    with traced_span(
+        "shop.assist",
+        OpenInferenceSpanKindValues.CHAIN,
+        session_id=payload.session_id or "",
+        user_id=user_id,
+        metadata={
+            "tenant_hash": hash_identifier(tenant_id),
+            "customer_hash": hash_identifier(payload.customer_id),
+        },
+        attributes={"shop.history_turns": len(payload.history)},
+    ) as span:
+        if settings.tracing_capture_content:
+            span.set_attribute(SpanAttributes.INPUT_VALUE, payload.message)
+        result = await _assist(settings, dataset, payload)
+        span.set_attribute("shop.search_backend", result["search_backend"])
+        span.set_attribute("shop.model", result["model"])
+        span.set_attribute("shop.personalized", result["personalized"])
+        span.set_attribute("shop.degraded", result["degraded"])
+        span.set_attribute("shop.product_count", len(result["products"]))
+        span.set_attribute("shop.intent.category", result["intent"]["category"] or "")
+        if result["intent"]["max_price"] is not None:
+            span.set_attribute("shop.intent.max_price", result["intent"]["max_price"])
+        if settings.tracing_capture_content:
+            span.set_attribute(SpanAttributes.OUTPUT_VALUE, result["reply"])
+        return result
+
+
+async def _assist(settings: Settings, dataset: RetailDataset, payload: ShopAssistRequest) -> dict[str, Any]:
     categories = sorted({product.category for product in dataset.products.values()})
     profile = customer_profile(dataset, payload.customer_id) if payload.customer_id else None
     history = "\n".join(f"{turn.role.upper()}: {redact_for_provider(turn.content)}" for turn in payload.history[-6:])
