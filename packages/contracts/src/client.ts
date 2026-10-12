@@ -102,6 +102,175 @@ export interface AiToolDefinition {
   input_schema: Record<string, unknown>;
 }
 
+export interface RetailConfig {
+  currency: string;
+  ai_provider: string;
+  ai_model: string;
+  search_backend: "vertex_ai_search" | "local";
+  analytics_backend: "bigquery" | "local";
+  looker_embed_url: string | null;
+}
+
+export interface RetailProduct {
+  id: string;
+  sku: string;
+  name: string;
+  brand: string;
+  category: string;
+  description: string;
+  price_cents: number;
+  currency: string;
+  tags: string[];
+  attributes: Record<string, unknown>;
+  on_hand: number;
+  in_stock: boolean;
+  reason?: string | null;
+  cost_cents?: number;
+  on_order?: number;
+  lead_time_days?: number;
+  supplier?: string;
+}
+
+export interface RetailOrder {
+  id: string;
+  number: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  channel: string;
+  store: string;
+  placed_at: string;
+  total_cents: number;
+  discount_cents: number;
+  currency: string;
+  items: { name: string; quantity: number }[];
+}
+
+export interface RetailOverview {
+  as_of: string;
+  currency: string;
+  revenue_30d_cents: number;
+  revenue_change_pct: number | null;
+  orders_30d: number;
+  average_order_value_cents: number;
+  active_customers_30d: number;
+  repeat_rate_90d: number;
+  online_share: number;
+  daily: { date: string; revenue_cents: number; orders: number }[];
+  categories: { category: string; revenue_cents: number; units: number }[];
+  top_products: { product_id: string; name: string; revenue_cents: number }[];
+}
+
+export type StockRisk = "critical" | "high" | "watch" | "ok";
+
+export interface InventoryForecast {
+  product_id: string;
+  sku: string;
+  name: string;
+  category: string;
+  supplier: string;
+  on_hand: number;
+  on_order: number;
+  lead_time_days: number;
+  case_pack: number;
+  units_last_28_days: number;
+  forecast_daily: number[];
+  forecast_units: number;
+  average_daily_forecast: number;
+  trend_pct: number;
+  days_of_cover: number | null;
+  stockout_date: string | null;
+  risk: StockRisk;
+  recommended_quantity: number;
+  recommended_cost_cents: number;
+  source: string;
+}
+
+export interface CustomerSegment {
+  segment: string;
+  description: string;
+  recommended_action: string;
+  customers: number;
+  share: number;
+  revenue_cents: number;
+  avg_order_value_cents: number;
+  avg_recency_days: number | null;
+  avg_orders: number;
+  top_categories: string[];
+}
+
+export interface BasketRule {
+  anchor_id: string;
+  anchor_sku: string;
+  anchor_name: string;
+  companion_id: string;
+  companion_sku: string;
+  companion_name: string;
+  orders_together: number;
+  support: number;
+  confidence: number;
+  lift: number;
+}
+
+export interface Shopper {
+  id: string;
+  name: string;
+  segment: string;
+  orders: number;
+  favorite_category: string | null;
+}
+
+export interface ShopTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ShopAssistResponse {
+  reply: string;
+  follow_up_questions: string[];
+  products: RetailProduct[];
+  bundle: (RetailProduct & { confidence: number; lift: number })[];
+  bundle_anchor: string | null;
+  intent: {
+    search_query: string;
+    category: string | null;
+    max_price: number | null;
+    min_price: number | null;
+  };
+  search_backend: string;
+  model: string;
+  personalized: boolean;
+  degraded: boolean;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  number: string;
+  status: string;
+  source: string;
+  supplier: string | null;
+  total_cost_cents: number;
+  currency: string;
+  note: string | null;
+  created_at: string;
+  lines: {
+    product_id: string;
+    name: string;
+    quantity: number;
+    unit_cost_cents: number;
+  }[];
+}
+
+export interface RetailCampaign {
+  id: string;
+  segment: string;
+  offer: string;
+  message: string;
+  channel: string;
+  audience_size: number;
+  status: string;
+  created_at: string;
+}
+
 export interface ApiClientOptions {
   baseUrl: string;
   getToken: () => string | null | Promise<string | null>;
@@ -991,6 +1160,85 @@ export class OmniApiClient {
       true,
       true,
     );
+  }
+
+  retailConfig(): Promise<RetailConfig> {
+    return this.request("/api/v1/retail/config", {}, true, true);
+  }
+
+  retailProducts(query = ""): Promise<RetailProduct[]> {
+    const suffix = query ? `?query=${encodeURIComponent(query)}` : "";
+    return this.request(`/api/v1/retail/products${suffix}`, {}, true, true);
+  }
+
+  retailOrders(limit = 50): Promise<RetailOrder[]> {
+    return this.request(`/api/v1/retail/orders?limit=${limit}`, {}, true, true);
+  }
+
+  retailOverview(): Promise<RetailOverview> {
+    return this.request("/api/v1/retail/insights/overview", {}, true, true);
+  }
+
+  inventoryForecast(horizonDays = 14): Promise<InventoryForecast[]> {
+    return this.request(
+      `/api/v1/retail/insights/inventory?horizon_days=${horizonDays}`,
+      {},
+      true,
+      true,
+    );
+  }
+
+  customerSegments(): Promise<CustomerSegment[]> {
+    return this.request("/api/v1/retail/insights/segments", {}, true, true);
+  }
+
+  basketRules(productId?: string): Promise<BasketRule[]> {
+    const suffix = productId
+      ? `?product_id=${encodeURIComponent(productId)}`
+      : "";
+    return this.request(
+      `/api/v1/retail/insights/basket${suffix}`,
+      {},
+      true,
+      true,
+    );
+  }
+
+  shoppers(): Promise<Shopper[]> {
+    return this.request("/api/v1/retail/shoppers", {}, true, true);
+  }
+
+  shopRecommendations(customerId?: string | null): Promise<RetailProduct[]> {
+    const suffix = customerId
+      ? `?customer_id=${encodeURIComponent(customerId)}`
+      : "";
+    return this.request(
+      `/api/v1/retail/shop/recommendations${suffix}`,
+      {},
+      true,
+      true,
+    );
+  }
+
+  shopAssist(payload: {
+    message: string;
+    customer_id?: string | null;
+    history?: ShopTurn[];
+  }): Promise<ShopAssistResponse> {
+    return this.request(
+      "/api/v1/retail/shop/assist",
+      { method: "POST", body: JSON.stringify(payload) },
+      true,
+      true,
+    );
+  }
+
+  purchaseOrders(): Promise<PurchaseOrder[]> {
+    return this.request("/api/v1/retail/purchase-orders", {}, true, true);
+  }
+
+  retailCampaigns(): Promise<RetailCampaign[]> {
+    return this.request("/api/v1/retail/campaigns", {}, true, true);
   }
 
   private async request<T>(

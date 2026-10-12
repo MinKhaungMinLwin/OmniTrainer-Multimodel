@@ -2,6 +2,22 @@
 
 Omni Model is a multi-tenant business automation platform with React web and Expo mobile clients, a modular FastAPI API, background processing, and multimodal AI moderation. The first platform slice manages customers with JWT authentication, tenant isolation, generated API contracts, and append-only audit events.
 
+## Omni Commerce (retail edition)
+
+The retail edition was built for the Google Cloud AI Builder Cup 2026. It adds:
+
+- an AI storefront where Gemini and Vertex AI Search answer shoppers' requests,
+  personalised with each shopper's purchase history;
+- merchant insights: demand forecasts (BigQuery `AI.FORECAST`), stock-out risk,
+  RFM and k-means customer segments, and basket analysis;
+- Omni Agent tools that draft restock purchase orders and segment campaigns. A
+  human must approve each one before it runs.
+
+Run it locally with `make infra-up migrate retail-seed`, then `make api` and
+`make web-retail`. Deploy it to Cloud Run with
+`PROJECT_ID=<id> deploy/gcp/deploy.sh`. See
+[docs/retail/GOOGLE_CLOUD.md](docs/retail/GOOGLE_CLOUD.md).
+
 ## Business automations
 
 The Automations workspace ships seven editable templates for lead intake,

@@ -1,4 +1,4 @@
-.PHONY: setup infra-up infra-down platform-up platform-down migrate seed api worker voice web mobile dev test lint format contracts build images release-gate infra-validate recovery-drill monitoring-up
+.PHONY: retail-seed retail-sync dev-retail web-retail deploy-gcp setup infra-up infra-down platform-up platform-down migrate seed api worker voice web mobile dev test lint format contracts build images release-gate infra-validate recovery-drill monitoring-up
 
 setup:
 	uv sync --locked --dev
@@ -21,6 +21,21 @@ migrate:
 
 seed:
 	uv run python -m services.api.omni_api.seed
+
+retail-seed:
+	uv run python -m services.api.omni_api.retail_seed
+
+retail-sync:
+	uv run python -m services.api.omni_api.retail_sync --all
+
+web-retail:
+	VITE_PRODUCT_EDITION=retail npm run dev:web
+
+dev-retail: infra-up migrate retail-seed
+	VITE_PRODUCT_EDITION=retail npm run dev
+
+deploy-gcp:
+	deploy/gcp/deploy.sh
 
 api:
 	uv run python -m services.api.omni_api.main

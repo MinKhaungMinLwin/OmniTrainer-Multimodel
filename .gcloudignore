@@ -1,0 +1,14 @@
+# Files Cloud Build never receives. Secrets stay local; images get config from
+# Cloud Run environment variables and Secret Manager.
+#!include:.gitignore
+.git
+.github
+.venv-*
+*.pem
+.env
+.env.*
+evals
+tests
+test-results
+multimodal_moderation.egg-info
+data/attachments

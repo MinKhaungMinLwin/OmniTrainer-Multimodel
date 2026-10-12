@@ -64,6 +64,26 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("ANTHROPIC_BASE_URL", "OMNI_ANTHROPIC_BASE_URL", "anthropic_base_url"),
     )
+    # Vertex AI (OMNI_AI_PROVIDER=vertex) authenticates with Application Default
+    # Credentials, so Cloud Run uses its service account instead of an API key.
+    gcp_project: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GOOGLE_CLOUD_PROJECT", "OMNI_GCP_PROJECT", "gcp_project"),
+    )
+    gcp_location: str = Field(
+        default="global",
+        validation_alias=AliasChoices("GOOGLE_CLOUD_LOCATION", "OMNI_GCP_LOCATION", "gcp_location"),
+    )
+    retail_currency: str = "SGD"
+    retail_search_backend: str = "local"
+    vertex_search_location: str = "global"
+    vertex_search_engine_id: str | None = None
+    vertex_search_data_store_id: str = "harbourline-products"
+    gcs_bucket: str | None = None
+    retail_analytics_backend: str = "local"
+    bigquery_dataset: str = "omni_retail"
+    bigquery_location: str = "US"
+    looker_embed_url: str | None = None
     gemini_stt_model: str = "gemini-3.5-flash-lite"
     gemini_tts_model: str = "gemini-2.5-flash-preview-tts"
     gemini_tts_voice: str = "Kore"
@@ -102,6 +122,11 @@ class Settings(BaseSettings):
     @field_validator("anthropic_base_url", mode="before")
     @classmethod
     def empty_anthropic_base_url_is_none(cls, value: str | None) -> str | None:
+        return value or None
+
+    @field_validator("gcp_project", "vertex_search_engine_id", "gcs_bucket", "looker_embed_url", mode="before")
+    @classmethod
+    def empty_gcp_value_is_none(cls, value: str | None) -> str | None:
         return value or None
 
     @field_validator("tracing_endpoint", mode="before")
