@@ -205,7 +205,9 @@ async def shop_assist(
     dataset = await load_dataset(session, context.tenant_id)
     if not dataset.products:
         raise HTTPException(status_code=409, detail="This workspace has no retail catalog yet")
-    return await assist(request.app.state.settings, dataset, payload)
+    return await assist(
+        request.app.state.settings, dataset, payload, tenant_id=context.tenant_id, user_id=context.user.id
+    )
 
 
 @router.get("/purchase-orders")
