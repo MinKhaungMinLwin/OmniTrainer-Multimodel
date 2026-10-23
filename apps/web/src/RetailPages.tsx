@@ -110,6 +110,8 @@ export function StorefrontPage({
   tenantId: string;
 }) {
   const [shopperId, setShopperId] = useState("");
+  // One id per chat so Phoenix groups each storefront conversation as a session.
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
   const [messages, setMessages] = useState<ShopMessage[]>([]);
   const [draft, setDraft] = useState("");
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -126,6 +128,7 @@ export function StorefrontPage({
       api.shopAssist({
         message,
         customer_id: shopperId || null,
+        session_id: sessionId,
         history: messages
           .slice(-6)
           .map(({ role, content }) => ({ role, content })),
@@ -169,6 +172,7 @@ export function StorefrontPage({
             onChange={(event) => {
               setShopperId(event.target.value);
               setMessages([]);
+              setSessionId(crypto.randomUUID());
             }}
           >
             <option value="">Guest shopper</option>

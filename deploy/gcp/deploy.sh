@@ -22,6 +22,12 @@ BQ_LOCATION="${BQ_LOCATION:-US}"
 SEARCH_ENGINE_ID="${SEARCH_ENGINE_ID:-harbourline-search}"
 LOOKER_EMBED_URL="${LOOKER_EMBED_URL:-}"
 SKIP_SYNC="${SKIP_SYNC:-false}"
+# Phoenix tracing (optional): e.g. PHOENIX_COLLECTOR_ENDPOINT=https://traces.example.com/v1/traces
+PHOENIX_COLLECTOR_ENDPOINT="${PHOENIX_COLLECTOR_ENDPOINT:-}"
+PHOENIX_API_KEY="${PHOENIX_API_KEY:-}"
+PHOENIX_PUBLIC_URL="${PHOENIX_PUBLIC_URL:-${PHOENIX_COLLECTOR_ENDPOINT%/v1/traces}}"
+PHOENIX_PROJECT="${PHOENIX_PROJECT:-omni-commerce}"
+TRACE_CONTENT="${TRACE_CONTENT:-false}"
 SA_NAME="omni-run"
 SA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 TAG="${TAG:-$(date +%Y%m%d-%H%M%S)}"
@@ -82,6 +88,15 @@ fi
 exists gcloud secrets describe omni-jwt-secret ||
   openssl rand -hex 32 | tr -d '\n' | gcloud secrets create omni-jwt-secret --data-file=- --replication-policy automatic
 
+if [[ -n "$PHOENIX_API_KEY" ]]; then
+  if exists gcloud secrets describe omni-phoenix-api-key; then
+    printf '%s' "$PHOENIX_API_KEY" | gcloud secrets versions add omni-phoenix-api-key --data-file=-
+  else
+    printf '%s' "$PHOENIX_API_KEY" |
+      gcloud secrets create omni-phoenix-api-key --data-file=- --replication-policy automatic
+  fi
+fi
+
 step "Building images with Cloud Build"
 gcloud builds submit --config deploy/gcp/cloudbuild.yaml \
   --substitutions "_API_IMAGE=${API_IMAGE},_WEB_IMAGE=${WEB_IMAGE}" .
@@ -90,10 +105,20 @@ gcloud builds submit --config deploy/gcp/cloudbuild.yaml \
 COMMON_ENV="^|^OMNI_ENVIRONMENT=hackathon|OMNI_AI_PROVIDER=vertex|OMNI_AI_MODEL=${AI_MODEL}"
 COMMON_ENV+="|GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|GOOGLE_CLOUD_LOCATION=${AI_LOCATION}"
 COMMON_ENV+="|OMNI_GEMINI_STT_MODEL=${AI_MODEL}|OMNI_AI_TIMEOUT_SECONDS=30|OMNI_ALLOW_DEV_AUTH=true"
-COMMON_ENV+="|OMNI_STORAGE_BACKEND=local|OMNI_ATTACHMENT_DIR=/tmp/attachments|OMNI_TRACING_ENABLED=false"
+COMMON_ENV+="|OMNI_STORAGE_BACKEND=local|OMNI_ATTACHMENT_DIR=/tmp/attachments"
 COMMON_ENV+="|OMNI_GCS_BUCKET=${BUCKET}|OMNI_BIGQUERY_DATASET=${BQ_DATASET}|OMNI_BIGQUERY_LOCATION=${BQ_LOCATION}"
 COMMON_ENV+="|OMNI_VERTEX_SEARCH_ENGINE_ID=${SEARCH_ENGINE_ID}"
 SECRETS="OMNI_DATABASE_URL=omni-database-url:latest,OMNI_JWT_SECRET=omni-jwt-secret:latest"
+if [[ -n "$PHOENIX_COLLECTOR_ENDPOINT" ]]; then
+  COMMON_ENV+="|OMNI_TRACING_ENABLED=true|OMNI_TRACING_ENDPOINT=${PHOENIX_COLLECTOR_ENDPOINT}"
+  COMMON_ENV+="|OMNI_TRACING_PUBLIC_URL=${PHOENIX_PUBLIC_URL}|OMNI_TRACING_PROJECT_NAME=${PHOENIX_PROJECT}"
+  COMMON_ENV+="|OMNI_TRACING_CAPTURE_CONTENT=${TRACE_CONTENT}"
+  if exists gcloud secrets describe omni-phoenix-api-key; then
+    SECRETS+=",OMNI_TRACING_API_KEY=omni-phoenix-api-key:latest"
+  fi
+else
+  COMMON_ENV+="|OMNI_TRACING_ENABLED=false"
+fi
 
 step "Migrating and seeding the database (Cloud Run job)"
 gcloud run jobs deploy omni-migrate --image "$API_IMAGE" --region "$REGION" --service-account "$SA" \

@@ -16,6 +16,7 @@ from itertools import combinations
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from openinference.semconv.trace import OpenInferenceSpanKindValues
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +30,7 @@ from services.api.omni_api.models import (
     SalesOrder,
     SalesOrderLine,
 )
+from services.observability import traced_span
 
 SINGAPORE = ZoneInfo("Asia/Singapore")
 HISTORY_DAYS = 180
@@ -343,16 +345,29 @@ def inventory_forecast(
 async def forecast_with_backend(
     dataset: RetailDataset, settings: Settings, horizon_days: int = 14
 ) -> list[dict[str, Any]]:
-    external = None
-    if settings.retail_analytics_backend == "bigquery":
-        from services.api.omni_api.retail_gcp import fetch_bigquery_forecast
+    with traced_span(
+        "retail.forecast",
+        OpenInferenceSpanKindValues.CHAIN,
+        attributes={
+            "forecast.backend_requested": settings.retail_analytics_backend,
+            "forecast.horizon_days": horizon_days,
+            "forecast.product_count": len(dataset.products),
+        },
+    ) as span:
+        external = None
+        if settings.retail_analytics_backend == "bigquery":
+            from services.api.omni_api.retail_gcp import fetch_bigquery_forecast
 
-        try:
-            external = await asyncio.to_thread(fetch_bigquery_forecast, settings, dataset.today)
-        except Exception:
-            # BigQuery is optional at request time; the local model keeps the console usable.
-            external = None
-    return inventory_forecast(dataset, horizon_days, external)
+            try:
+                external = await asyncio.to_thread(fetch_bigquery_forecast, settings, dataset.today)
+            except Exception as exc:
+                # BigQuery is optional at request time; the local model keeps the console usable.
+                span.set_attribute("forecast.fallback_reason", type(exc).__name__)
+                external = None
+        rows = inventory_forecast(dataset, horizon_days, external)
+        span.set_attribute("forecast.source", rows[0]["source"] if rows else "none")
+        span.set_attribute("forecast.at_risk_count", sum(1 for row in rows if row["risk"] in ("critical", "high")))
+        return rows
 
 
 # ---------------------------------------------------------------------------
