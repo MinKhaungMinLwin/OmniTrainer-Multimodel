@@ -1,4 +1,5 @@
 import time
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -21,10 +22,22 @@ from services.api.omni_api.models import (
 )
 from services.api.omni_api.storage import AttachmentStorage
 from services.observability import hash_identifier, traced_span
-from services.voice.omni_voice.providers import LocalRealtimeModel, LocalStreamingTTS
+from services.voice.omni_voice.providers import LocalRealtimeModel, LocalStreamingTTS, StreamingTextToSpeech
 
+# Agent lines are reviewed, fixed text (disclosure, consent, transfer), so the
+# model stage stays deterministic; only the voice is rendered by a provider.
 _LOCAL_MODEL = LocalRealtimeModel()
-_LOCAL_TTS = LocalStreamingTTS()
+# Each media session selects TTS for its own codec. The context variable keeps
+# concurrent calls isolated; simulations use the deterministic default.
+_VOICE_TTS: ContextVar[StreamingTextToSpeech] = ContextVar("voice_tts", default=LocalStreamingTTS())
+
+
+def use_voice_tts(tts: StreamingTextToSpeech) -> Token:
+    return _VOICE_TTS.set(tts)
+
+
+def reset_voice_tts(token: Token) -> None:
+    _VOICE_TTS.reset(token)
 
 
 @dataclass(frozen=True)
@@ -205,8 +218,16 @@ async def agent_reply(
     model_started = time.perf_counter_ns()
     response = await _LOCAL_MODEL.generate(text, call.state)
     model_ms = max(0, int((time.perf_counter_ns() - model_started) / 1_000_000))
+    tts = _VOICE_TTS.get()
     tts_started = time.perf_counter_ns()
-    chunks = await _LOCAL_TTS.synthesize(response)
+    try:
+        chunks = await tts.synthesize(response)
+        tts_failed = False
+    except Exception:
+        # The transcript still records the line; the caller hears silence, and
+        # repeated silence escalates to a person through the normal flow.
+        chunks = []
+        tts_failed = True
     tts_ms = max(0, int((time.perf_counter_ns() - tts_started) / 1_000_000))
     first_audio_ms = max(0, int((time.perf_counter_ns() - speech_end_ns) / 1_000_000)) if speech_end_ns else 0
     metrics = {key: list(value) if isinstance(value, list) else value for key, value in call.latency_metrics.items()}
@@ -215,6 +236,8 @@ async def agent_reply(
     if speech_end_ns:
         metrics.setdefault("speech_end_to_first_audio_ms", []).append(first_audio_ms)
     call.latency_metrics = metrics
+    if tts_failed:
+        await append_event(session, call, "provider.fallback.activated", {"stage": "tts", "provider": tts.name})
     state = dict(call.state)
     state["generation_id"] = int(state.get("generation_id", 0)) + 1
     state["agent_speaking"] = True
@@ -230,7 +253,7 @@ async def agent_reply(
         text=response,
         start_ms=elapsed_ms,
         end_ms=elapsed_ms + max(200, len(response) * 35),
-        provider="local-tts",
+        provider=tts.name,
     )
     await append_event(
         session,
@@ -361,6 +384,7 @@ async def handle_user_turn(
     start_ms: int,
     end_ms: int,
     confidence_bps: int = 9900,
+    stt_provider: str = "local-stt",
 ) -> VoiceOutput:
     with traced_span(
         "voice.turn",
@@ -381,6 +405,7 @@ async def handle_user_turn(
             start_ms=start_ms,
             end_ms=end_ms,
             confidence_bps=confidence_bps,
+            stt_provider=stt_provider,
         )
         span.set_attribute("voice.output_type", output.event_type)
         span.set_attribute("voice.output_characters", len(output.text or ""))
@@ -395,6 +420,7 @@ async def _handle_user_turn(
     start_ms: int,
     end_ms: int,
     confidence_bps: int = 9900,
+    stt_provider: str = "local-stt",
 ) -> VoiceOutput:
     speech_end_ns = time.perf_counter_ns()
     await append_transcript(
@@ -404,7 +430,7 @@ async def _handle_user_turn(
         text=text,
         start_ms=start_ms,
         end_ms=end_ms,
-        provider="local-stt",
+        provider=stt_provider,
         confidence_bps=confidence_bps,
     )
     state = dict(call.state)

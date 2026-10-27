@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -6,12 +7,34 @@ import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from services.api.omni_api.config import Settings
+from services.api.omni_api.gemini_audio import EmptyTranscriptionError, GeminiAudioService
+from services.voice.omni_voice.audio import (
+    MULAW_CODECS,
+    PCM_CODECS,
+    chunk_audio,
+    encode_from_pcm16,
+    pcm16_to_wav,
+    resample_pcm16,
+    wav_to_pcm16,
+)
+
 
 class StreamingSpeechToText(Protocol):
     async def transcribe(self, audio: bytes, metadata: dict[str, Any]) -> "TranscriptHypothesis | None": ...
 
 
+class UtteranceSpeechToText(Protocol):
+    """A hosted recognizer that receives one endpointed caller utterance at a time."""
+
+    name: str
+
+    async def transcribe_utterance(self, pcm16: bytes, sample_rate_hz: int) -> "TranscriptHypothesis | None": ...
+
+
 class StreamingTextToSpeech(Protocol):
+    name: str
+
     async def synthesize(self, text: str) -> list[bytes]: ...
 
 
@@ -29,9 +52,11 @@ class TranscriptHypothesis:
 class LocalStreamingSTT:
     """Deterministic adapter for simulations and provider contract tests.
 
-    Production adapters replace this class and consume the same audio/metadata
-    interface. Transcript hints are never enabled by a hosted adapter.
+    Hosted recognizers implement `UtteranceSpeechToText` instead and receive
+    endpointed audio. Transcript hints are never honored by a hosted adapter.
     """
+
+    name = "local-stt"
 
     async def transcribe(self, audio: bytes, metadata: dict[str, Any]) -> TranscriptHypothesis | None:
         hint = metadata.get("transcript_hint")
@@ -45,6 +70,8 @@ class LocalStreamingSTT:
 
 
 class LocalStreamingTTS:
+    name = "local-tts"
+
     async def synthesize(self, text: str) -> list[bytes]:
         encoded = text.encode("utf-8")
         return [encoded[index : index + 160] for index in range(0, len(encoded), 160)] or [b""]
@@ -54,6 +81,67 @@ class LocalRealtimeModel:
     async def generate(self, instruction: str, state: dict[str, Any]) -> str:
         del state
         return " ".join(instruction.split())[:500]
+
+
+class GeminiUtteranceSTT:
+    """Transcribe endpointed caller utterances with Gemini.
+
+    Gemini audio understanding is request/response rather than streaming, so the
+    media session segments speech first and sends each utterance as a WAV file.
+    Gemini returns no confidence score; `NOMINAL_CONFIDENCE_BPS` marks results
+    as hosted-model transcripts without implying a measured probability.
+    """
+
+    name = "gemini-stt"
+    NOMINAL_CONFIDENCE_BPS = 9000
+
+    def __init__(self, settings: Settings):
+        self.service = GeminiAudioService(settings)
+
+    async def transcribe_utterance(self, pcm16: bytes, sample_rate_hz: int) -> TranscriptHypothesis | None:
+        try:
+            result = await self.service.transcribe(pcm16_to_wav(pcm16, sample_rate_hz), "audio/wav")
+        except EmptyTranscriptionError:
+            return None
+        return TranscriptHypothesis(text=result.text, is_final=True, confidence_bps=self.NOMINAL_CONFIDENCE_BPS)
+
+
+class GeminiTTS:
+    """Synthesize agent speech with Gemini and encode it for the call's media codec."""
+
+    name = "gemini-tts"
+
+    def __init__(self, settings: Settings, codec: str, sample_rate_hz: int, timeout_seconds: float):
+        normalized = codec.lower()
+        if normalized not in MULAW_CODECS | PCM_CODECS:
+            raise ValueError(f"Gemini TTS cannot encode {codec} audio")
+        self.service = GeminiAudioService(settings)
+        self.codec = normalized
+        self.sample_rate_hz = sample_rate_hz
+        self.timeout_seconds = timeout_seconds
+        bytes_per_sample = 1 if normalized in MULAW_CODECS else 2
+        # 20 ms frames match the telephony packetization interval.
+        self.bytes_per_chunk = sample_rate_hz * bytes_per_sample // 50
+
+    async def synthesize(self, text: str) -> list[bytes]:
+        wav = await asyncio.wait_for(self.service.synthesize(text), timeout=self.timeout_seconds)
+        pcm, source_rate_hz = wav_to_pcm16(wav)
+        encoded = encode_from_pcm16(resample_pcm16(pcm, source_rate_hz, self.sample_rate_hz), self.codec)
+        return chunk_audio(encoded, self.bytes_per_chunk)
+
+
+def build_utterance_stt(settings: Settings) -> UtteranceSpeechToText | None:
+    """Return the hosted recognizer, or None to keep the deterministic per-frame contract."""
+
+    if settings.voice_stt_provider == "gemini":
+        return GeminiUtteranceSTT(settings)
+    return None
+
+
+def build_tts(settings: Settings, codec: str, sample_rate_hz: int) -> StreamingTextToSpeech:
+    if settings.voice_tts_provider == "gemini":
+        return GeminiTTS(settings, codec, sample_rate_hz, settings.voice_hosted_tts_timeout_ms / 1000)
+    return LocalStreamingTTS()
 
 
 def normalize_audio(audio: bytes, codec: str, sample_rate_hz: int, target_rate_hz: int = 16_000) -> bytes:

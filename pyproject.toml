@@ -111,6 +111,7 @@ platform = [
     "google-cloud-discoveryengine>=0.13.0",
     "google-cloud-bigquery>=3.30.0",
     "google-cloud-storage>=2.19.0",
+    "httpx>=0.28.1",  # Twilio call-control REST client in the voice gateway
 ]
 dev = [
     "pytest>=8.4.2",
