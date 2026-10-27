@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -101,6 +102,19 @@ class Settings(BaseSettings):
     voice_circuit_failure_threshold: int = Field(default=3, ge=1, le=100)
     voice_circuit_reset_seconds: int = Field(default=30, ge=1, le=3600)
     voice_max_gateway_sessions: int = Field(default=500, ge=1, le=100000)
+    # Hosted speech adapters. "local" keeps the deterministic simulator contract.
+    voice_stt_provider: Literal["local", "gemini"] = "local"
+    voice_tts_provider: Literal["local", "gemini"] = "local"
+    voice_hosted_stt_timeout_ms: int = Field(default=6000, ge=100, le=60000)
+    voice_hosted_tts_timeout_ms: int = Field(default=8000, ge=100, le=60000)
+    # Energy-based endpointing for hosted STT; the threshold is PCM16 RMS.
+    voice_vad_threshold: int = Field(default=500, ge=1, le=32767)
+    voice_vad_min_speech_ms: int = Field(default=200, ge=20, le=5000)
+    voice_vad_end_silence_ms: int = Field(default=700, ge=100, le=10000)
+    voice_vad_max_utterance_ms: int = Field(default=15000, ge=1000, le=120000)
+    twilio_account_sid: str | None = None
+    twilio_auth_token: str | None = Field(default=None, repr=False)
+    twilio_api_base_url: str = "https://api.twilio.com"
 
     @field_validator("jwt_secret")
     @classmethod
@@ -124,7 +138,15 @@ class Settings(BaseSettings):
     def empty_anthropic_base_url_is_none(cls, value: str | None) -> str | None:
         return value or None
 
-    @field_validator("gcp_project", "vertex_search_engine_id", "gcs_bucket", "looker_embed_url", mode="before")
+    @field_validator(
+        "gcp_project",
+        "vertex_search_engine_id",
+        "gcs_bucket",
+        "looker_embed_url",
+        "twilio_account_sid",
+        "twilio_auth_token",
+        mode="before",
+    )
     @classmethod
     def empty_gcp_value_is_none(cls, value: str | None) -> str | None:
         return value or None

@@ -3,25 +3,29 @@ import base64
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
+import httpx
 from fastapi import FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.api.omni_api.config import Settings
 from services.api.omni_api.database import build_engine, build_session_factory
 from services.api.omni_api.models import CallRawPayload, VoiceCall, VoiceFlowConfig
 from services.api.omni_api.storage import AttachmentStorage
 from services.observability import configure_tracing, shutdown_tracing
-from services.voice.omni_voice.providers import GenericTelephonyAdapter, LocalStreamingSTT, normalize_audio
+from services.voice.omni_voice import twilio
+from services.voice.omni_voice.media import FrameResult, MediaSession
+from services.voice.omni_voice.providers import GenericTelephonyAdapter, build_tts, build_utterance_stt
 from services.voice.omni_voice.reliability import (
     AsyncBoundedMediaBuffer,
     CircuitBreaker,
     ReliabilityMetrics,
-    ReliableProvider,
     SessionAdmission,
 )
 from services.voice.omni_voice.runtime import (
@@ -30,14 +34,7 @@ from services.voice.omni_voice.runtime import (
     admit_call,
     answer_call,
     append_event,
-    append_transcript,
-    handle_dtmf,
-    handle_silence,
-    handle_user_turn,
-    handle_voicemail,
     hangup_call,
-    speech_started,
-    store_recording,
 )
 
 
@@ -69,7 +66,59 @@ def serialize_output(output: VoiceOutput) -> dict:
     }
 
 
-def create_voice_app(settings: Settings | None = None) -> FastAPI:
+async def store_raw_payload(
+    session: AsyncSession,
+    settings: Settings,
+    call: VoiceCall,
+    *,
+    provider: str,
+    provider_call_id: str,
+    event_id: str,
+    event_type: str,
+    body: bytes,
+) -> None:
+    """Keep the provider's evidence immutable and idempotent per provider event."""
+
+    existing = await session.scalar(
+        select(CallRawPayload).where(
+            CallRawPayload.provider == provider,
+            CallRawPayload.provider_event_id == event_id,
+        )
+    )
+    if existing is not None:
+        return
+    digest = hashlib.sha256(body).hexdigest()
+    object_key = f"call-data/raw/{call.tenant_id}/{call.id}/{digest}.json"
+    AttachmentStorage(settings).put(object_key, body, "application/json")
+    config = await session.get(VoiceFlowConfig, call.flow_config_id)
+    received_at = datetime.now(timezone.utc)
+    session.add(
+        CallRawPayload(
+            tenant_id=call.tenant_id,
+            call_id=call.id,
+            provider=provider,
+            provider_call_id=provider_call_id,
+            provider_event_id=event_id,
+            event_type=event_type,
+            schema_version="1",
+            payload_hash=digest,
+            object_key=object_key,
+            received_at=received_at,
+            retention_until=received_at + timedelta(days=config.retention_days),
+            legal_hold=False,
+        )
+    )
+
+
+def websocket_base_url(settings: Settings) -> str:
+    return settings.voice_public_base_url.rstrip("/").replace("http://", "ws://").replace("https://", "wss://")
+
+
+def create_voice_app(
+    settings: Settings | None = None,
+    *,
+    twilio_client: twilio.TwilioClient | None = None,
+) -> FastAPI:
     app_settings = settings or Settings()
     engine = build_engine(app_settings.database_url)
     session_factory = build_session_factory(engine)
@@ -84,6 +133,12 @@ def create_voice_app(settings: Settings | None = None) -> FastAPI:
         app_settings.voice_circuit_failure_threshold,
         app_settings.voice_circuit_reset_seconds,
     )
+    if twilio_client is None and app_settings.twilio_account_sid and app_settings.twilio_auth_token:
+        twilio_client = twilio.TwilioClient(
+            app_settings.twilio_account_sid,
+            app_settings.twilio_auth_token,
+            app_settings.twilio_api_base_url,
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -100,6 +155,42 @@ def create_voice_app(settings: Settings | None = None) -> FastAPI:
     app.state.session_factory = session_factory
     app.state.telephony_adapter = adapter
     app.state.reliability = reliability
+    # Factories live on app state so tests and deployments can swap providers.
+    app.state.utterance_stt = build_utterance_stt(app_settings)
+    app.state.tts_factory = lambda codec, sample_rate_hz: build_tts(app_settings, codec, sample_rate_hz)
+    app.state.twilio_client = twilio_client
+
+    def new_media_session(call_id: str) -> MediaSession:
+        return MediaSession(
+            settings=app_settings,
+            session_factory=session_factory,
+            call_id=call_id,
+            reliability=reliability,
+            stt_breaker=stt_breaker,
+            utterance_stt=app.state.utterance_stt,
+            tts_factory=app.state.tts_factory,
+        )
+
+    async def pump_frames(
+        websocket: WebSocket, media_buffer: AsyncBoundedMediaBuffer, parse: Callable[[dict], dict | None]
+    ) -> None:
+        try:
+            while True:
+                raw_frame = await websocket.receive_text()
+                if len(raw_frame.encode()) > app_settings.voice_max_frame_bytes:
+                    reliability.increment("media_frames_oversized_total")
+                    continue
+                try:
+                    incoming = parse(json.loads(raw_frame))
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    reliability.increment("media_frames_invalid_total")
+                    continue
+                if incoming is not None:
+                    await media_buffer.push(incoming)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await media_buffer.close()
 
     @app.get("/health/live")
     async def live():
@@ -113,7 +204,16 @@ def create_voice_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health/providers")
     async def provider_health():
-        return {"stt": {"provider": "local-stt", "circuit": stt_breaker.state}, "status": "ok"}
+        utterance_stt = app.state.utterance_stt
+        return {
+            "stt": {
+                "provider": utterance_stt.name if utterance_stt else "local-stt",
+                "circuit": stt_breaker.state,
+            },
+            "tts": {"provider": f"{app_settings.voice_tts_provider}-tts"},
+            "telephony": {"twilio": "configured" if app.state.twilio_client else "not_configured"},
+            "status": "ok",
+        }
 
     @app.get("/v1/reliability")
     async def reliability_status():
@@ -138,34 +238,15 @@ def create_voice_app(settings: Settings | None = None) -> FastAPI:
 
             async def store_raw(call: VoiceCall) -> None:
                 event_id = x_voice_event_id or hashlib.sha256(f"{x_voice_timestamp}.".encode() + body).hexdigest()
-                existing = await session.scalar(
-                    select(CallRawPayload).where(
-                        CallRawPayload.provider == payload.provider,
-                        CallRawPayload.provider_event_id == event_id,
-                    )
-                )
-                if existing is not None:
-                    return
-                digest = hashlib.sha256(body).hexdigest()
-                object_key = f"call-data/raw/{call.tenant_id}/{call.id}/{digest}.json"
-                AttachmentStorage(app_settings).put(object_key, body, "application/json")
-                config = await session.get(VoiceFlowConfig, call.flow_config_id)
-                received_at = datetime.now(timezone.utc)
-                session.add(
-                    CallRawPayload(
-                        tenant_id=call.tenant_id,
-                        call_id=call.id,
-                        provider=payload.provider,
-                        provider_call_id=payload.provider_call_id,
-                        provider_event_id=event_id,
-                        event_type=payload.event,
-                        schema_version="1",
-                        payload_hash=digest,
-                        object_key=object_key,
-                        received_at=received_at,
-                        retention_until=received_at + timedelta(days=config.retention_days),
-                        legal_hold=False,
-                    )
+                await store_raw_payload(
+                    session,
+                    app_settings,
+                    call,
+                    provider=payload.provider,
+                    provider_call_id=payload.provider_call_id,
+                    event_id=event_id,
+                    event_type=payload.event,
+                    body=body,
                 )
 
             if payload.event == "incoming":
@@ -186,11 +267,7 @@ def create_voice_app(settings: Settings | None = None) -> FastAPI:
                 await session.commit()
                 expires_at = int(time.time()) + 3600
                 token = adapter.media_token(call.id, expires_at)
-                base = (
-                    app_settings.voice_public_base_url.rstrip("/")
-                    .replace("http://", "ws://")
-                    .replace("https://", "wss://")
-                )
+                base = websocket_base_url(app_settings)
                 return {
                     "call_id": call.id,
                     "created": created,
@@ -229,7 +306,7 @@ def create_voice_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(status_code=404, detail="Call not found")
             await append_event(session, call, "webrtc.offer.received", {"sdp_bytes": len(payload.sdp.encode())})
             await session.commit()
-        base = app_settings.voice_public_base_url.rstrip("/").replace("http://", "ws://").replace("https://", "wss://")
+        base = websocket_base_url(app_settings)
         return {
             "type": "answer",
             "sdp": "v=0\r\no=omni 0 0 IN IP4 127.0.0.1\r\ns=Omni Voice\r\nt=0 0\r\na=group:BUNDLE 0\r\n",
@@ -250,182 +327,261 @@ def create_voice_app(settings: Settings | None = None) -> FastAPI:
         except Exception:
             await session_admission.release()
             raise
-        audio_buffer = bytearray()
-        codec = "mulaw"
-        sample_rate_hz = 8000
-        duration_ms = 0
-        stt = LocalStreamingSTT()
-        fallback_stt = LocalStreamingSTT()
+        media_session = new_media_session(call_id)
         media_buffer = AsyncBoundedMediaBuffer(
             app_settings.voice_max_buffered_frames,
             app_settings.voice_stale_frame_ms,
             reliability,
         )
-
-        async def receive_media() -> None:
-            try:
-                while True:
-                    raw_frame = await websocket.receive_text()
-                    if len(raw_frame.encode()) > app_settings.voice_max_frame_bytes:
-                        reliability.increment("media_frames_oversized_total")
-                        continue
-                    try:
-                        incoming = json.loads(raw_frame)
-                    except json.JSONDecodeError:
-                        reliability.increment("media_frames_invalid_total")
-                        continue
-                    await media_buffer.push(incoming)
-            except WebSocketDisconnect:
-                pass
-            finally:
-                await media_buffer.close()
-
-        receiver = asyncio.create_task(receive_media())
+        receiver = asyncio.create_task(pump_frames(websocket, media_buffer, lambda frame: frame))
         try:
             while True:
                 buffered = await media_buffer.pop()
                 if buffered is None:
                     raise WebSocketDisconnect
-                frame = buffered.payload
-                async with session_factory() as session:
-                    call = await session.get(VoiceCall, call_id)
-                    if call is None:
-                        await websocket.close(code=4404, reason="Call not found")
-                        return
-                    frame_type = frame.get("type")
-                    output: VoiceOutput | None = None
-                    if frame_type == "start":
-                        codec = str(frame.get("codec", "mulaw"))
-                        sample_rate_hz = int(frame.get("sample_rate_hz", 8000))
-                        await append_event(
-                            session, call, "media.started", {"codec": codec, "sample_rate_hz": sample_rate_hz}
-                        )
-                        output = await answer_call(session, call)
-                    elif frame_type == "speech_start":
-                        output = await speech_started(session, call, int(frame.get("heard_response_boundary_ms", 0)))
-                    elif frame_type == "audio":
-                        chunk = base64.b64decode(frame.get("audio", ""), validate=True)
-                        duration_ms += int(frame.get("duration_ms", 20))
-                        if len(audio_buffer) + len(chunk) <= app_settings.voice_max_recording_bytes:
-                            audio_buffer.extend(chunk)
-                        else:
-                            await append_event(
-                                session,
-                                call,
-                                "recording.truncated",
-                                {"limit_bytes": app_settings.voice_max_recording_bytes},
-                            )
-                        stt_started = time.perf_counter_ns()
-                        normalized = normalize_audio(chunk, codec, sample_rate_hz)
-                        provider = ReliableProvider(
-                            "stt",
-                            lambda: stt.transcribe(normalized, frame),
-                            lambda: fallback_stt.transcribe(b"", frame),
-                            timeout_seconds=app_settings.voice_stage_timeout_ms / 1000,
-                            breaker=stt_breaker,
-                            metrics=reliability,
-                        )
-                        provider_result = await provider.run()
-                        hypothesis = provider_result.value
-                        if provider_result.degraded:
-                            await append_event(
-                                session,
-                                call,
-                                "provider.fallback.activated",
-                                {"stage": "stt", "provider": provider_result.provider},
-                            )
-                        stt_ms = max(0, int((time.perf_counter_ns() - stt_started) / 1_000_000))
-                        metrics = {
-                            key: list(value) if isinstance(value, list) else value
-                            for key, value in call.latency_metrics.items()
-                        }
-                        metrics.setdefault("stt_ms", []).append(stt_ms)
-                        call.latency_metrics = metrics
-                        if hypothesis and hypothesis.is_final:
-                            output = await handle_user_turn(
-                                session,
-                                call,
-                                hypothesis.text,
-                                start_ms=int(frame.get("start_ms", max(0, duration_ms - 20))),
-                                end_ms=int(frame.get("end_ms", duration_ms)),
-                                confidence_bps=hypothesis.confidence_bps,
-                            )
-                        elif hypothesis:
-                            await append_transcript(
-                                session,
-                                call,
-                                speaker="caller",
-                                text=hypothesis.text,
-                                start_ms=int(frame.get("start_ms", max(0, duration_ms - 20))),
-                                end_ms=int(frame.get("end_ms", duration_ms)),
-                                provider="local-stt",
-                                confidence_bps=hypothesis.confidence_bps,
-                                is_final=False,
-                            )
-                    elif frame_type == "transcript":
-                        output = await handle_user_turn(
-                            session,
-                            call,
-                            str(frame.get("text", "")),
-                            start_ms=int(frame.get("start_ms", duration_ms)),
-                            end_ms=int(frame.get("end_ms", duration_ms + 500)),
-                            confidence_bps=int(frame.get("confidence_bps", 9900)),
-                        )
-                    elif frame_type == "playback_complete":
-                        call.state = {**call.state, "agent_speaking": False}
-                        await append_event(
-                            session,
-                            call,
-                            "audio.playback.completed",
-                            {"generation_id": frame.get("generation_id")},
-                        )
-                    elif frame_type == "dtmf":
-                        output = await handle_dtmf(session, call, str(frame.get("digit", "")), duration_ms)
-                    elif frame_type == "silence":
-                        output = await handle_silence(session, call)
-                    elif frame_type == "voicemail":
-                        output = await handle_voicemail(session, call)
-                    elif frame_type == "hangup":
-                        await hangup_call(session, call)
-                        await store_recording(
-                            session,
-                            app_settings,
-                            call,
-                            bytes(audio_buffer),
-                            codec=codec,
-                            sample_rate_hz=sample_rate_hz,
-                            duration_ms=duration_ms,
-                        )
-                        await session.commit()
-                        await websocket.send_json({"type": "ended", "call_id": call.id})
-                        await websocket.close(code=1000)
-                        return
-                    else:
-                        await append_event(session, call, "media.unknown_frame", {"type": frame_type})
-                    await session.commit()
-                    if output is not None:
-                        await websocket.send_json(serialize_output(output))
+                result = await media_session.handle(buffered.payload)
+                if result.missing:
+                    await websocket.close(code=4404, reason="Call not found")
+                    return
+                if result.ended:
+                    await websocket.send_json({"type": "ended", "call_id": call_id})
+                    await websocket.close(code=1000)
+                    return
+                for output in result.outputs:
+                    await websocket.send_json(serialize_output(output))
         except WebSocketDisconnect:
-            async with session_factory() as session:
-                call = await session.get(VoiceCall, call_id)
-                if call is not None:
-                    await hangup_call(session, call, "media_disconnect")
-                    await store_recording(
-                        session,
-                        app_settings,
-                        call,
-                        bytes(audio_buffer),
-                        codec=codec,
-                        sample_rate_hz=sample_rate_hz,
-                        duration_ms=duration_ms,
-                    )
-                    await session.commit()
+            await media_session.disconnect()
         finally:
             receiver.cancel()
             with suppress(asyncio.CancelledError):
                 await receiver
             await media_buffer.close()
             await session_admission.release()
+            media_session.close()
+
+    async def verified_twilio_form(request: Request, signature: str | None) -> dict[str, str]:
+        if not app_settings.twilio_auth_token:
+            raise HTTPException(status_code=503, detail="Twilio is not configured")
+        form = await request.form()
+        params = [(key, str(value)) for key, value in form.multi_items()]
+        # Twilio signs the public URL it called, which differs from the
+        # request URL behind a proxy or load balancer.
+        url = app_settings.voice_public_base_url.rstrip("/") + request.url.path
+        if request.url.query:
+            url += "?" + request.url.query
+        if not signature or not twilio.verify_twilio_signature(app_settings.twilio_auth_token, url, params, signature):
+            raise HTTPException(status_code=401, detail="Invalid Twilio signature")
+        return dict(params)
+
+    def twiml_response(document: str) -> Response:
+        return Response(document, media_type="application/xml")
+
+    @app.post("/v1/telephony/twilio/voice/{tenant_id}")
+    async def twilio_voice(
+        request: Request,
+        tenant_id: str,
+        flow_key: str = "after_hours_intake",
+        region: str | None = None,
+        x_twilio_signature: str | None = Header(default=None, alias="X-Twilio-Signature"),
+    ):
+        form = await verified_twilio_form(request, x_twilio_signature)
+        call_sid = form.get("CallSid", "")
+        if not call_sid:
+            raise HTTPException(status_code=422, detail="CallSid is required")
+        async with session_factory() as session:
+            try:
+                call, _ = await admit_call(
+                    session,
+                    tenant_id=tenant_id,
+                    provider=twilio.PROVIDER,
+                    provider_call_id=call_sid,
+                    caller=form.get("From", "unknown"),
+                    callee=form.get("To", "unknown"),
+                    region=region or form.get("FromCountry", "unknown").lower(),
+                    flow_key=flow_key,
+                )
+            except AdmissionError as exc:
+                config = await session.scalar(
+                    select(VoiceFlowConfig).where(
+                        VoiceFlowConfig.tenant_id == tenant_id,
+                        VoiceFlowConfig.flow_key == flow_key,
+                    )
+                )
+                reliability.increment(f"twilio_admission_denied_{exc.code}_total")
+                return twiml_response(twilio.unavailable_twiml(config.transfer_number if config else None))
+            await store_raw_payload(
+                session,
+                app_settings,
+                call,
+                provider=twilio.PROVIDER,
+                provider_call_id=call_sid,
+                event_id=f"{call_sid}:incoming",
+                event_type="incoming",
+                body=json.dumps(form, sort_keys=True).encode(),
+            )
+            await session.commit()
+        token = adapter.media_token(call.id, int(time.time()) + 3600)
+        stream_url = f"{websocket_base_url(app_settings)}/v1/twilio/media/{call.id}"
+        return twiml_response(twilio.connect_stream_twiml(stream_url, token))
+
+    @app.post("/v1/telephony/twilio/status", status_code=204)
+    async def twilio_status(
+        request: Request,
+        x_twilio_signature: str | None = Header(default=None, alias="X-Twilio-Signature"),
+    ):
+        form = await verified_twilio_form(request, x_twilio_signature)
+        call_sid = form.get("CallSid", "")
+        call_status = form.get("CallStatus", "")
+        async with session_factory() as session:
+            call = await session.scalar(
+                select(VoiceCall).where(VoiceCall.provider == twilio.PROVIDER, VoiceCall.provider_call_id == call_sid)
+            )
+            if call is None:
+                return Response(status_code=204)
+            await store_raw_payload(
+                session,
+                app_settings,
+                call,
+                provider=twilio.PROVIDER,
+                provider_call_id=call_sid,
+                event_id=f"{call_sid}:{call_status}:{form.get('SequenceNumber', '')}",
+                event_type=call_status or "status",
+                body=json.dumps(form, sort_keys=True).encode(),
+            )
+            if call_status == "completed":
+                await hangup_call(session, call, "provider_completed")
+            elif call_status in twilio.TERMINAL_STATUSES:
+                call.status = "failed"
+                call.outcome = "provider_failure"
+                await append_event(session, call, "call.failed", {"reason": call_status})
+                await hangup_call(session, call, call_status)
+            else:
+                await append_event(session, call, "provider.status", {"status": call_status})
+            await session.commit()
+        return Response(status_code=204)
+
+    async def run_call_control(call_id: str, call_sid: str, action: twilio.PendingAction) -> None:
+        client: twilio.TwilioClient | None = app.state.twilio_client
+        try:
+            if client is None:
+                raise RuntimeError("Twilio REST credentials are not configured")
+            if action.kind == "transfer" and action.transfer_number:
+                await client.transfer(call_sid, action.transfer_number)
+            else:
+                await client.hang_up(call_sid)
+            event_type, payload = f"twilio.{action.kind}.requested", {}
+        except (httpx.HTTPError, RuntimeError) as exc:
+            reliability.increment("twilio_call_control_failures_total")
+            event_type, payload = "twilio.call_control.failed", {"action": action.kind, "error": type(exc).__name__}
+        async with session_factory() as session:
+            call = await session.get(VoiceCall, call_id)
+            if call is not None:
+                await append_event(session, call, event_type, payload)
+                await session.commit()
+
+    @app.websocket("/v1/twilio/media/{call_id}")
+    async def twilio_media_stream(websocket: WebSocket, call_id: str):
+        if not await session_admission.acquire():
+            await websocket.close(code=4429, reason="Gateway capacity reached; retry on failover")
+            return
+        try:
+            await websocket.accept()
+        except Exception:
+            await session_admission.release()
+            raise
+        media_session: MediaSession | None = None
+        receiver: asyncio.Task | None = None
+        media_buffer = AsyncBoundedMediaBuffer(
+            app_settings.voice_max_buffered_frames,
+            app_settings.voice_stale_frame_ms,
+            reliability,
+        )
+        try:
+            # Twilio sends `connected`, then `start` carrying the custom parameters.
+            start: dict = {}
+            while start.get("event") != "start":
+                start = json.loads(await websocket.receive_text())
+                if start.get("event") not in {"connected", "start"}:
+                    break
+            details = start.get("start") or {}
+            token = str((details.get("customParameters") or {}).get("token", ""))
+            if start.get("event") != "start" or not adapter.verify_media_token(token, call_id):
+                await websocket.close(code=4401, reason="Invalid media token")
+                return
+            stream_sid = str(start.get("streamSid") or details.get("streamSid", ""))
+            call_sid = str(details.get("callSid", ""))
+            media_session = new_media_session(call_id)
+            pending: dict[int, twilio.PendingAction] = {}
+            control_started = False
+
+            async def control(action: twilio.PendingAction) -> None:
+                # A call is transferred or hung up at most once; frames that
+                # arrive afterwards must not issue more REST requests.
+                nonlocal control_started
+                if control_started:
+                    return
+                control_started = True
+                await run_call_control(call_id, call_sid, action)
+
+            async def deliver(result: FrameResult) -> None:
+                for output in result.outputs:
+                    for message in twilio.to_twilio_messages(output, stream_sid, end_call=result.call_finished):
+                        await websocket.send_json(message)
+                    if output.generation_id is None:
+                        continue
+                    if output.event_type == "transfer":
+                        # Without a configured number the only safe end is a hang-up.
+                        kind = "transfer" if output.transfer_number else "hang_up"
+                        pending[output.generation_id] = twilio.PendingAction(kind, output.transfer_number)
+                    elif result.call_finished:
+                        pending[output.generation_id] = twilio.PendingAction("hang_up")
+                if result.call_finished and not pending:
+                    # Nothing left to play (or the goodbye mark already came back).
+                    await control(twilio.PendingAction("hang_up"))
+
+            result = await media_session.handle(
+                {"type": "start", "codec": twilio.TWILIO_CODEC, "sample_rate_hz": twilio.TWILIO_SAMPLE_RATE_HZ}
+            )
+            if result.missing:
+                await websocket.close(code=4404, reason="Call not found")
+                return
+            await deliver(result)
+            receiver = asyncio.create_task(pump_frames(websocket, media_buffer, lambda message: message))
+            while True:
+                buffered = await media_buffer.pop()
+                if buffered is None:
+                    raise WebSocketDisconnect
+                message = buffered.payload
+                action = twilio.mark_action(message, pending)
+                try:
+                    frame = twilio.to_internal_frame(message)
+                except ValueError:
+                    reliability.increment("media_frames_invalid_total")
+                    continue
+                if frame is None:
+                    continue
+                result = await media_session.handle(frame)
+                if result.missing:
+                    await websocket.close(code=4404, reason="Call not found")
+                    return
+                if result.ended:
+                    await websocket.close(code=1000)
+                    return
+                await deliver(result)
+                if action is not None:
+                    await control(action)
+        except (WebSocketDisconnect, json.JSONDecodeError):
+            if media_session is not None:
+                await media_session.disconnect()
+        finally:
+            if receiver is not None:
+                receiver.cancel()
+                with suppress(asyncio.CancelledError):
+                    await receiver
+            await media_buffer.close()
+            await session_admission.release()
+            if media_session is not None:
+                media_session.close()
 
     return app
 

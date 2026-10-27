@@ -33,6 +33,10 @@ class GeminiAudioError(RuntimeError):
     pass
 
 
+class EmptyTranscriptionError(GeminiAudioError):
+    """The request succeeded, but the audio contained no recognizable speech."""
+
+
 def gemini_client(settings: Settings) -> genai.Client:
     if settings.ai_provider == "vertex":
         if not settings.gcp_project:
@@ -102,7 +106,7 @@ class GeminiAudioService:
             raise GeminiAudioError("Gemini could not transcribe this recording") from exc
         text = (response.text or "").strip()
         if not text:
-            raise GeminiAudioError("Gemini returned an empty transcription")
+            raise EmptyTranscriptionError("Gemini returned an empty transcription")
         return Transcription(text=text, model=self.settings.gemini_stt_model)
 
     async def synthesize(self, text: str, voice: str | None = None) -> bytes:
