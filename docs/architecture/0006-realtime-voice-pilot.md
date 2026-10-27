@@ -64,3 +64,6 @@ negotiation, recording alignment, and latency measurement. Before external
 traffic, operators must configure a real carrier and speech adapters, validate
 the transfer destination, perform jurisdiction-specific disclosure/recording
 legal review, and complete live internal call certification.
+
+Twilio telephony and Gemini speech adapters were added in
+[ADR 0011](0011-hosted-voice-adapters.md).

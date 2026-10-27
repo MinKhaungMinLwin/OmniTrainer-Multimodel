@@ -30,7 +30,7 @@ a human to approve it.
 | Operations | Customers, jobs, scheduling, technicians, invoices, payments, offline read-only mode | [ADR 0002](docs/architecture/0002-operations-domain-commands.md), [ADR 0003](docs/architecture/0003-operations-mvp-storage-and-payments.md) |
 | Omni Agent | Durable, tool-using AI runs that pause for human approval | [ADR 0004](docs/architecture/0004-ai-copilot-runtime.md) |
 | Automations | Versioned workflow templates with shadow mode, approvals, retries, and a kill switch | [ADR 0005](docs/architecture/0005-automation-runtime.md) |
-| Voice pilot | After-hours call intake with consent, emergency detection, and safe transfer | [ADR 0006](docs/architecture/0006-realtime-voice-pilot.md) |
+| Voice pilot | After-hours call intake over Twilio with Gemini speech, consent, emergency detection, and safe transfer | [ADR 0006](docs/architecture/0006-realtime-voice-pilot.md), [ADR 0011](docs/architecture/0011-hosted-voice-adapters.md) |
 | Call intelligence | Redacted, versioned transcripts and call facts with human review | [ADR 0007](docs/architecture/0007-call-data-intelligence.md) |
 | Environmental | Lab workbook validation, screening, and cited report drafts, over MCP and on the web | [ADR 0009](docs/architecture/0009-environmental-mcp.md), [ADR 0010](docs/architecture/0010-environmental-workspace.md) |
 | Omni Commerce | Retail edition: AI storefront, demand forecasts, segments, and approved restock/campaign actions | [Google Cloud guide](docs/retail/GOOGLE_CLOUD.md) |
@@ -236,10 +236,22 @@ The independent media service does the following:
 - exposes a WebSocket/WebRTC bridge contract that any telephony, STT, realtime
   model, or TTS adapter can implement.
 
-The included local adapters and call simulator are deterministic. To connect a
-real carrier or hosted speech provider, you need credentials and an adapter
-implementation. Recording and consent rules need legal review for each
-jurisdiction before the system makes external calls.
+The local adapters and call simulator are deterministic, so tests and the
+simulator need no credentials. For real calls, the gateway includes:
+
+- a Twilio Media Streams adapter, which handles signed webhooks, barge-in,
+  transfers, and hang-ups after the final line finishes playing; and
+- Gemini speech-to-text and text-to-speech. The gateway detects pauses in the
+  caller's speech and transcribes one utterance at a time.
+
+To use them, set `OMNI_VOICE_STT_PROVIDER=gemini`,
+`OMNI_VOICE_TTS_PROVIDER=gemini`, and the `OMNI_TWILIO_*` variables, then follow
+the [Twilio voice runbook](docs/runbooks/twilio-voice.md). The agent's spoken
+lines remain fixed text, not generated. Hosted speech currently misses the
+800 ms first-audio target; see
+[ADR 0011](docs/architecture/0011-hosted-voice-adapters.md). Recording and
+consent rules need legal review for each jurisdiction before the system makes
+external calls.
 
 ### Call intelligence
 
@@ -320,7 +332,7 @@ are:
 | `OMNI_JWT_SECRET`, `OMNI_ALLOW_DEV_AUTH`, `OMNI_CORS_ORIGINS` | Auth and CORS |
 | `OMNI_AI_*`, `OMNI_GEMINI_*` | Agent provider, model, rate limits, timeouts, STT/TTS |
 | `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Provider credentials |
-| `OMNI_VOICE_*` | Voice webhook/media secrets and realtime budgets |
+| `OMNI_VOICE_*`, `OMNI_TWILIO_*` | Voice webhook/media secrets, realtime budgets, speech providers, endpointing, and Twilio credentials |
 | `OMNI_TRACING_*` | Phoenix / OpenTelemetry export |
 | `GOOGLE_CLOUD_*`, `OMNI_RETAIL_*`, `OMNI_BIGQUERY_*`, `OMNI_VERTEX_*`, `OMNI_GCS_BUCKET` | Retail edition on Google Cloud |
 | `USER_API_KEY`, `DEFAULT_GOOGLE_MODEL`, `EVAL_*` | Legacy moderation app and evaluations |

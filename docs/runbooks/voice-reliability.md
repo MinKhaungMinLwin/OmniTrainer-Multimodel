@@ -20,9 +20,14 @@
 4. Reconcile provider call records and replay the call-data outbox after the
    incident. Confirm transcript/event sequence continuity before closing it.
 
+Hosted adapter failures (Gemini STT/TTS, Twilio call control) and their
+fallbacks are listed in [ADR 0011](../architecture/0011-hosted-voice-adapters.md).
+Twilio setup and certification steps are in the
+[Twilio voice runbook](twilio-voice.md).
+
 ## Fault exercise
 
-Run `uv run pytest tests/test_scale_readiness.py tests/test_voice_pilot.py`.
+Run `uv run pytest tests/test_scale_readiness.py tests/test_voice_pilot.py tests/test_voice_providers.py`.
 Exercise provider timeout, open circuit, stale/oversized media, concurrent
 session admission, interruption, disconnect, and duplicate webhook cases in
 staging before promotion.
